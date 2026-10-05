@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { ExplorerView } from "@/components/explore/explorer-view";
 import { seedExploreFilters } from "@/lib/core/portals";
 import { readInbox, readApplications, careerOpsRoot } from "@/lib/career-ops";
+import { readDismissed } from "@/lib/dismissed.mjs";
 import { DEFAULT_FILTERS } from "@/lib/explore";
 
 // Read live data at request time so a bare checkout (or `next build` with no
@@ -22,6 +23,6 @@ export default function ExplorePage() {
     /* ignore */
   }
   return (
-    <ExplorerView seed={seed} inboxSnapshot={readInbox()} appsSnapshot={readApplications()} rootExists={rootExists} />
+    <ExplorerView seed={seed} inboxSnapshot={readInbox()} appsSnapshot={readApplications()} dismissed={[...readDismissed(careerOpsRoot())]} rootExists={rootExists} />
   );
 }

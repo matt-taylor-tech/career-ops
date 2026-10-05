@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ExternalLink, Plus, Check, Loader2, ShieldQuestion, Sparkles, Coins } from "lucide-react";
+import { ExternalLink, EyeOff, Plus, Check, Loader2, ShieldQuestion, Sparkles, Coins } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { instrumentSerif } from "@/lib/fonts";
 import { ATS_LABEL, type AtsSource, type DiscoveredOffer } from "@/lib/explore";
@@ -41,6 +41,23 @@ const WORKER_LABEL: Record<string, string> = { evaluate: "Evaluating…", pdf: "
 export function DiscoveryCard({ offer, inPipeline, evaluatedN }: { offer: DiscoveredOffer; inPipeline: boolean; evaluatedN?: string }) {
   const { added, adding, addToPipeline } = useExplore();
   const { jobs, startJob } = useJobs();
+  // "Not interested": hides this card here and keeps it off Today/Explore after
+  // reloads (data/dismissed-postings.tsv; also skips the inbox row if present).
+  const [hidden, setHidden] = useState(false);
+  const [hiding, setHiding] = useState(false);
+  const hide = async () => {
+    setHiding(true);
+    try {
+      const res = await fetch("/api/dismiss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: offer.url, company: offer.company, title: offer.title }),
+      });
+      if (res.ok) setHidden(true);
+    } finally {
+      setHiding(false);
+    }
+  };
 
   // GLOBAL worker awareness: any worker acting on this URL drives the CTA, here
   // and on every other surface that renders this offer (the jobs store is global).
@@ -61,6 +78,8 @@ export function DiscoveryCard({ offer, inPipeline, evaluatedN }: { offer: Discov
     addToPipeline([offer]); // evaluating implies it's in the pipeline — record it
     startJob({ title: `Evaluate · ${offer.company}`, subtitle: offer.title, kind: "evaluate", input: offer.url, page: "/explore" });
   };
+
+  if (hidden) return null;
 
   return (
     <div className="co-rise group flex min-w-0 flex-col gap-2.5 rounded-xl border border-border bg-surface/40 p-3.5 text-left transition-all hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-sm">
@@ -83,6 +102,16 @@ export function DiscoveryCard({ offer, inPipeline, evaluatedN }: { offer: Discov
         >
           <ExternalLink className="size-4" />
         </a>
+        <button
+          type="button"
+          onClick={hide}
+          disabled={hiding}
+          title="Not interested — hide this posting"
+          aria-label="Hide this posting"
+          className="-m-1 inline-flex shrink-0 items-center justify-center rounded p-1 text-faint transition-colors hover:text-foreground disabled:opacity-40 max-sm:min-h-[44px] max-sm:min-w-[44px]"
+        >
+          {hiding ? <Loader2 className="size-4 animate-spin" /> : <EyeOff className="size-4" />}
+        </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 text-[11px]">

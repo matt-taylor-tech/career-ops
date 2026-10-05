@@ -5,6 +5,7 @@ import { getNormalizeTextKey } from "@/lib/core/text-key";
 import { evaluatedKeys, isEvaluated, skippedInboxUrls } from "@/lib/whats-new-suppression.mjs";
 import type { DiscoveredOffer } from "@/lib/explore";
 import { collectWhatsNew, resolveOfferLimit } from "@/lib/whats-new.mjs";
+import { readDismissed } from "@/lib/dismissed.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,12 +42,14 @@ export async function GET(req: Request) {
   const evaluated = evaluatedKeys(readApplications(), normalizeTextKey);
   // Roles skipped in the inbox → also not "new" (a Skip only marks pipeline.md).
   const skipped = skippedInboxUrls(readInbox());
+  // …and postings hidden straight from Today / Explore ("not interested").
+  const dismissed = readDismissed(careerOpsRoot());
 
   const toOffer = (c: string[]): DiscoveredOffer | null => {
     const [url, firstSeen, portal, title, company, status, location] = c;
     if (!url || !/^https?:\/\//i.test(url)) return null;
     if (status && /skipped|expired/i.test(status)) return null;
-    if (skipped.has(url)) return null;
+    if (skipped.has(url) || dismissed.has(url)) return null;
     if (isEvaluated(evaluated, normalizeTextKey, company, title)) return null;
     return {
       url,

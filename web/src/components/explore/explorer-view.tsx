@@ -33,11 +33,13 @@ export function ExplorerView({
   seed,
   inboxSnapshot,
   appsSnapshot,
+  dismissed = [],
   rootExists,
 }: {
   seed: { filters: ExploreFilters; seededFrom: string[] };
   inboxSnapshot: InboxJob[];
   appsSnapshot: Application[];
+  dismissed?: string[];
   rootExists: boolean;
 }) {
   const { filters, setFilters, initFilters, phase, running, offers, discover, loadFresh, status, error, scannerMissing, mode, setMode, aiIntent, setAiIntent, discoverAI, companiesScanned, companiesAvailable, capHit, droppedNoDate, partial } = useExplore();
@@ -92,7 +94,10 @@ export function ExplorerView({
   const inboxUrls = useMemo(() => new Set(inboxSnapshot.map((j) => j.url)), [inboxSnapshot]);
   // Postings skipped in the inbox (`- [x]` in pipeline.md) are a "not interested"
   // decision — keep them out of Explore results instead of re-offering them.
-  const skippedUrls = useMemo(() => new Set(inboxSnapshot.filter((j) => j.done).map((j) => j.url)), [inboxSnapshot]);
+  const skippedUrls = useMemo(
+    () => new Set([...inboxSnapshot.filter((j) => j.done).map((j) => j.url), ...dismissed]),
+    [inboxSnapshot, dismissed],
+  );
   const enriched: EnrichedOffer[] = useMemo(
     () =>
       offers.filter((o) => !skippedUrls.has(o.url)).map((o) => {
