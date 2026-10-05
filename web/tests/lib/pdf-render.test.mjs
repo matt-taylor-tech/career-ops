@@ -530,3 +530,27 @@ test("writeCvHtml: a shorter re-render leaves no trailing bytes", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("renderAndMarkPdf: split data/code layout -> scripts from codeRoot, cwd stays the data root", async () => {
+  // Given a Custom Data Directory layout: the data root has no .mjs scripts
+  const dir = makeScratchDir();
+  const pdfPaths = makePdfPaths(dir, "9");
+  writeFileSync(pdfPaths.html, "<html></html>");
+  const { spawnFn, calls } = makeRouterSpawn({
+    "generate-pdf.mjs": { exitCode: 0 },
+    "mark-pdf-ready.mjs": { exitCode: 0, stdout: JSON.stringify({ changed: true }) },
+  });
+  try {
+    // When rendering with an explicit code root
+    const result = await renderAndMarkPdf({ spawnFn, execPath: "node", root: "/data", codeRoot: "/code", pdfPaths, format: "letter", reportNum: "9" });
+
+    // Then both scripts resolve under the checkout, and both run from the data root
+    assert.equal(result.kind, "rendered");
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].args[0], join("/code", "generate-pdf.mjs"));
+    assert.equal(calls[1].args[0], join("/code", "mark-pdf-ready.mjs"));
+    for (const c of calls) assert.equal(c.opts.cwd, "/data");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

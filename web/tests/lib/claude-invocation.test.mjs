@@ -276,3 +276,21 @@ test("argValue: absent or dangling flags yield an empty string, not a crash", ()
   assert.equal(argValue(["-p", "x"], "--allowedTools"), "");
   assert.equal(argValue(["--allowedTools"], "--allowedTools"), "");
 });
+
+test("claudeCliArgs: addDirs adds one --add-dir per directory and changes no tool grant", () => {
+  // Given the Custom Data Directory layout, where the checkout is not the cwd
+  const plain = claudeCliArgs({ kind: "pdf", prompt: "x" });
+  const split = claudeCliArgs({ kind: "pdf", prompt: "x", addDirs: ["/code", ""] });
+
+  // Then the checkout is granted, blank entries are dropped...
+  const i = split.indexOf("--add-dir");
+  assert.equal(split[i + 1], "/code");
+  assert.equal(split.filter((a) => a === "--add-dir").length, 1);
+  // ...and the tool scope that ships is byte-identical to the plain run
+  for (const flag of ["--allowedTools", "--disallowedTools"]) {
+    assert.equal(argValue(split, flag), argValue(plain, flag));
+  }
+  // And with no addDirs (the single-checkout layout) the argv carries no --add-dir at all
+  assert.ok(!plain.includes("--add-dir"));
+  assert.deepEqual(claudeCliArgs({ kind: "pdf", prompt: "x", addDirs: [] }), plain);
+});

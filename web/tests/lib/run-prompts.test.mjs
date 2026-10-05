@@ -9,7 +9,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildPrompt, isShellSafeCompanyName } from "../../src/lib/run-prompts.mjs";
+import { buildPrompt, isShellSafeCompanyName, layoutPreamble } from "../../src/lib/run-prompts.mjs";
 import { OPEN_MARK, CLOSE_MARK } from "../../src/lib/cv-envelope.mjs";
 import { grantsWriteCapability, toolScopeFor } from "../../src/lib/claude-invocation.mjs";
 
@@ -552,4 +552,28 @@ test("buildPrompt: the pdf prompt still forbids resolving a template in-agent", 
 
   assert.match(prompt, /cv-templates\.mjs/);
   assert.match(prompt, /already resolved/i);
+});
+
+test("layoutPreamble: same root (default single checkout) adds nothing", () => {
+  assert.equal(layoutPreamble({ dataRoot: "/x/career-ops", codeRoot: "/x/career-ops" }), "");
+  // A trailing slash on one side is still the same directory.
+  assert.equal(layoutPreamble({ dataRoot: "/x/career-ops/", codeRoot: "/x/career-ops" }), "");
+});
+
+test("layoutPreamble: split layout names both roots and where each kind of file lives", () => {
+  // Given the Custom Data Directory layout
+  const text = layoutPreamble({ dataRoot: "/x/career-ops-data", codeRoot: "/x/career-ops" });
+
+  // Then both absolute roots are stated...
+  assert.match(text, /DATA_ROOT = \/x\/career-ops-data\b/);
+  assert.match(text, /CODE_ROOT = \/x\/career-ops\./);
+  // ...user files are placed in the data root, system files in the checkout...
+  for (const userFile of ["cv.md", "config/", "modes/_profile.md", "modes/_custom.md", "modes/_brief.md", "portals.yml", "data/", "reports/", "output/", "interview-prep/", "jds/"]) {
+    assert.ok(text.split("CODE_ROOT =")[0].includes(userFile), `${userFile} must be listed under DATA_ROOT`);
+  }
+  assert.match(text, /CODE_ROOT = [^\n]*templates\//);
+  // ...and scripts are run by absolute path from the checkout
+  assert.ok(text.includes("`node /x/career-ops/<name>.mjs`"));
+  // It is a prefix: it ends in a blank line so the prompt that follows starts clean
+  assert.ok(text.endsWith("\n\n"));
 });

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import * as yaml from "js-yaml";
-import { careerOpsRoot, rootScript } from "@/lib/career-ops";
+import { careerOpsRoot, codeRoot, rootScript } from "@/lib/career-ops";
 import { atomicWriteWithBackup } from "@/lib/core/safe-write";
 import { isMapping } from "@/lib/portals-config.mjs";
 import { PROFILE_CADENCE_KEYS, type ProfileCadenceKey } from "@/lib/followups";
@@ -116,7 +116,7 @@ export async function POST(req: Request) {
   if (!fs.existsSync(file)) {
     // First create: seed from the example so we never leave a cadence-only profile.
     try {
-      const seeded = yaml.load(fs.readFileSync(path.join(root, "config", "profile.example.yml"), "utf8"));
+      const seeded = yaml.load(fs.readFileSync(path.join(codeRoot(), "config", "profile.example.yml"), "utf8"));
       base = isObj(seeded) ? seeded : {};
     } catch {
       base = {};

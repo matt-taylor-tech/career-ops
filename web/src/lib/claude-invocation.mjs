@@ -151,11 +151,19 @@ export function grantsWriteCapability(scope) {
  * Assembled here, not in the route, so a guard can assert on the command line
  * that actually ships instead of on source text that can be rewritten around it.
  *
- * @param {{kind: string, prompt: string}} args
+ * `addDirs` grants the agent's tools access to directories beyond its cwd, one
+ * `--add-dir` per entry. The web passes the engine checkout here when it is not
+ * the data root (the Custom Data Directory layout), so a worker running in the
+ * data root can still read modes/*.md, templates/ and the scripts. Empty (the
+ * default, and the single-checkout case) adds nothing, so the argv is unchanged.
+ * It widens WHERE the granted tools reach, never WHICH tools are granted.
+ *
+ * @param {{kind: string, prompt: string, addDirs?: string[]}} args
  * @returns {string[]}
  */
-export function claudeCliArgs({ kind, prompt }) {
+export function claudeCliArgs({ kind, prompt, addDirs = [] }) {
   const scope = toolScopeFor(kind);
+  const extraDirs = (addDirs ?? []).filter((d) => typeof d === "string" && d.length > 0);
   return [
     "-p", prompt,
     "--output-format", "stream-json",
@@ -170,6 +178,7 @@ export function claudeCliArgs({ kind, prompt }) {
     // optional Canva server) from loading on evaluate/research runs. The same gap
     // for the other kinds is #2507.
     ...(capabilitiesFor(kind).writes ? [] : ["--strict-mcp-config"]),
+    ...extraDirs.flatMap((dir) => ["--add-dir", dir]),
     "--allowedTools", scope.allowed,
     "--disallowedTools", scope.disallowed,
   ];

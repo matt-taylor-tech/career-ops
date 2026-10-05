@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
-import { careerOpsRoot } from "@/lib/career-ops";
+import { careerOpsRoot, rootScript } from "@/lib/career-ops";
 import { localISODate } from "@/lib/followups";
 import { dismissPosting } from "@/lib/dismissed.mjs";
 import { setInboxSkip } from "@/lib/inbox-skip.mjs";
@@ -30,7 +30,9 @@ export async function POST(req: Request) {
     if (!result.ok) return NextResponse.json({ error: "url must be an http(s) posting URL", code: result.error }, { status: 400 });
 
     let inbox = "not-in-inbox";
-    const lockModule = path.join(root, "pipeline-lock.mjs");
+    // The lock module is engine code: under the Custom Data Directory layout it
+    // lives in the checkout, never beside data/pipeline.md.
+    const lockModule = rootScript("pipeline-lock");
     const skip = await setInboxSkip(path.join(root, "data", "pipeline.md"), url, true, {
       lockModule: fs.existsSync(lockModule) ? lockModule : undefined,
     });

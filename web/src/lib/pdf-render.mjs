@@ -90,10 +90,15 @@ export function writeCvHtml({ pdfPaths, html }) {
 
 /**
  * Spawn generate-pdf.mjs as a plain child process and resolve once it exits.
- * @param {{spawnFn: Function, execPath: string, root: string, html: string, finalPdf: string, format: "letter"|"a4", reportNum: string}} args
+ * `root` is the data root (the child's cwd); `codeRoot` is the engine checkout
+ * holding the script. They differ under the Custom Data Directory layout
+ * (DATA_CONTRACT.md), where the data root has no `.mjs` files at all; the
+ * script finds the data root itself from its own `__dirname` marker, so only
+ * the script path needs the checkout. Defaults to `root` (single checkout).
+ * @param {{spawnFn: Function, execPath: string, root: string, codeRoot?: string, html: string, finalPdf: string, format: "letter"|"a4", reportNum: string}} args
  * @returns {Promise<{ok: boolean, stderr: string}>}
  */
-export function spawnGeneratePdf({ spawnFn, execPath, root, html, finalPdf, format, reportNum }) {
+export function spawnGeneratePdf({ spawnFn, execPath, root, codeRoot = root, html, finalPdf, format, reportNum }) {
   return new Promise((resolve) => {
     const child = spawnFn(
       execPath,
@@ -101,7 +106,7 @@ export function spawnGeneratePdf({ spawnFn, execPath, root, html, finalPdf, form
       // from the template's fixed markup order, so this guard would otherwise
       // hard-fail every web-triggered render — same bypass a human already
       // applies manually via the CLI when this diverges.
-      [path.join(root, "generate-pdf.mjs"), html, finalPdf, `--format=${format}`, `--report=${reportNum}`, "--allow-reorder"],
+      [path.join(codeRoot, "generate-pdf.mjs"), html, finalPdf, `--format=${format}`, `--report=${reportNum}`, "--allow-reorder"],
       { cwd: root },
     );
     let stderr = "";
@@ -116,12 +121,13 @@ export function spawnGeneratePdf({ spawnFn, execPath, root, html, finalPdf, form
  * JSON stdout when present (mark-pdf-ready.mjs prints a JSON payload even on
  * a failure exit when --json is passed) so a caller can surface the specific
  * reason (not-found / ambiguous / lock-timeout / ...) rather than raw stderr.
- * @param {{spawnFn: Function, execPath: string, root: string, reportNum: string}} args
+ * `codeRoot` as in spawnGeneratePdf: the script's checkout, defaulting to `root`.
+ * @param {{spawnFn: Function, execPath: string, root: string, codeRoot?: string, reportNum: string}} args
  * @returns {Promise<{ok: boolean, data: object | null, stderr: string}>}
  */
-export function markTrackerReady({ spawnFn, execPath, root, reportNum }) {
+export function markTrackerReady({ spawnFn, execPath, root, codeRoot = root, reportNum }) {
   return new Promise((resolve) => {
-    const child = spawnFn(execPath, [path.join(root, "mark-pdf-ready.mjs"), reportNum, "--json"], { cwd: root });
+    const child = spawnFn(execPath, [path.join(codeRoot, "mark-pdf-ready.mjs"), reportNum, "--json"], { cwd: root });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (d) => { stdout += d.toString(); });
@@ -185,13 +191,13 @@ export function cleanupPdfScratch(scratchDir, prefix) {
  * Call after writeCvHtml for the same pdfPaths — this reads the HTML that
  * function wrote. `format` is passed in rather than read back off disk, so the two
  * no longer share a file and the only coupling left is the HTML itself.
- * @param {{spawnFn: Function, execPath: string, root: string, pdfPaths: {html: string, finalPdf: string}, format: "letter"|"a4", reportNum: string}} args
+ * @param {{spawnFn: Function, execPath: string, root: string, codeRoot?: string, pdfPaths: {html: string, finalPdf: string}, format: "letter"|"a4", reportNum: string}} args
  * @returns {Promise<RenderResult>}
  */
-export async function renderAndMarkPdf({ spawnFn, execPath, root, pdfPaths, format, reportNum }) {
+export async function renderAndMarkPdf({ spawnFn, execPath, root, codeRoot = root, pdfPaths, format, reportNum }) {
   const warnings = [];
 
-  const render = await spawnGeneratePdf({ spawnFn, execPath, root, html: pdfPaths.html, finalPdf: pdfPaths.finalPdf, format, reportNum });
+  const render = await spawnGeneratePdf({ spawnFn, execPath, root, codeRoot, html: pdfPaths.html, finalPdf: pdfPaths.finalPdf, format, reportNum });
   cleanupPdfScratch(path.dirname(pdfPaths.html), `cv-web-${reportNum}.`);
 
   if (!render.ok) {
@@ -214,7 +220,7 @@ export async function renderAndMarkPdf({ spawnFn, execPath, root, pdfPaths, form
   // tracker-sync miss (e.g. the row was edited away mid-flight) doesn't fail
   // the whole job, but it must still be visible to whoever is watching this
   // run, not just a server-side log nobody sees.
-  const mark = await markTrackerReady({ spawnFn, execPath, root, reportNum });
+  const mark = await markTrackerReady({ spawnFn, execPath, root, codeRoot, reportNum });
   if (!mark.ok) {
     console.error(`mark-pdf-ready.mjs failed for report #${reportNum}: ${mark.data?.error ?? mark.stderr}`);
     warnings.push(

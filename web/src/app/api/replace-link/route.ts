@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
-import { careerOpsRoot, findReportFile } from "@/lib/career-ops";
+import { careerOpsRoot, rootScript, findReportFile } from "@/lib/career-ops";
 import { localISODate } from "@/lib/followups";
 import { replaceInboxLink, replaceReportLink } from "@/lib/replace-link.mjs";
 
@@ -52,7 +52,9 @@ export async function POST(req: Request) {
   try {
     if (body.target === "inbox") {
       const url = typeof body.url === "string" ? body.url : "";
-      const lockModule = path.join(root, "pipeline-lock.mjs");
+      // The lock module is engine code: under the Custom Data Directory layout it
+      // lives in the checkout, never beside data/pipeline.md.
+      const lockModule = rootScript("pipeline-lock");
       const result = await replaceInboxLink(path.join(root, "data", "pipeline.md"), url, newUrl, {
         lockModule: fs.existsSync(lockModule) ? lockModule : undefined,
       });

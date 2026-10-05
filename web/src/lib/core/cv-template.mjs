@@ -38,11 +38,19 @@ import { BASE_CV_TEMPLATE } from "../run-prompts.mjs";
  * not exist; the catch is for a checkout too old to export resolveTemplate, and
  * for a template whose placeholders fail validation.
  *
- * @param {string} root Absolute path to the career-ops checkout (careerOpsRoot()).
- * @returns {Promise<string>} Repo-relative template path, forward-slashed.
+ * `codeRoot` is the engine checkout holding cv-templates.mjs and templates/.
+ * It equals `root` in the default single-checkout layout and is a different
+ * directory under the Custom Data Directory layout (DATA_CONTRACT.md), where
+ * `root` holds user data only and has no scripts or templates at all. The
+ * returned path is relative to `codeRoot`, since that is where templates live,
+ * and a relative CAREER_OPS_PROFILE resolves against it too (the CLI's cwd).
+ *
+ * @param {string} root Absolute path to the career-ops data root (careerOpsRoot()).
+ * @param {string} [codeRoot] Absolute path to the engine checkout; defaults to `root`.
+ * @returns {Promise<string>} Checkout-relative template path, forward-slashed.
  */
-export async function resolveCvTemplate(root) {
-  const file = path.join(root, "cv-templates.mjs");
+export async function resolveCvTemplate(root, codeRoot = root) {
+  const file = path.join(codeRoot, "cv-templates.mjs");
   try {
     const mod = await import(/* webpackIgnore: true */ pathToFileURL(file).href);
     if (typeof mod?.resolveTemplate !== "function") return BASE_CV_TEMPLATE;
@@ -51,13 +59,15 @@ export async function resolveCvTemplate(root) {
       fallback: true,
       // undefined keeps cv-templates.mjs's own default, rather than restating it
       // here where it would drift.
-      profilePath: profile ? path.resolve(root, profile) : undefined,
+      // A relative value means what it means on the CLI, whose cwd is the
+      // checkout — the same base path-resolver.mjs uses for CAREER_OPS_ROOT.
+      profilePath: profile ? path.resolve(codeRoot, profile) : undefined,
     });
     if (typeof abs !== "string" || !abs) return BASE_CV_TEMPLATE;
     // The prompt names a repo-relative path, and always with forward slashes:
     // path.relative gives backslashes on Windows, which is not how any of the
     // agent-facing paths in this prompt are written.
-    const rel = path.relative(root, abs).split(path.sep).join("/");
+    const rel = path.relative(codeRoot, abs).split(path.sep).join("/");
     return rel || BASE_CV_TEMPLATE;
   } catch {
     return BASE_CV_TEMPLATE;

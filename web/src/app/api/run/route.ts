@@ -9,11 +9,11 @@ import { cliSubstitutionNotice, cliUnavailableError, resolveCliOrFallback } from
 import { localISODate } from "@/lib/followups";
 import { accumulateTokens, hasNewCompletedReport, isFatalGenericStderr, killMsForKind, timeoutMessage } from "@/lib/run-cli-support.mjs";
 import { spawnHeadlessCli } from "@/lib/spawn-cli.mjs";
-import { careerOpsRoot, readMemory, findReportFile, readInbox, readScanDates, readLanguageConfig, readApplications } from "@/lib/career-ops";
+import { careerOpsRoot, codeRoot, separateCodeRoot, readMemory, findReportFile, readInbox, readScanDates, readLanguageConfig, readApplications } from "@/lib/career-ops";
 import { resolvePdfPaths, type PdfPaths } from "@/lib/pdf-paths.mjs";
 import { renderAndMarkPdf, writeCvHtml, pdfRunOutcome } from "@/lib/pdf-render.mjs";
 import { createCvEnvelopeFilter, type CvEnvelope } from "@/lib/cv-envelope.mjs";
-import { buildPrompt, isShellSafeCompanyName } from "@/lib/run-prompts.mjs";
+import { buildPrompt, isShellSafeCompanyName, layoutPreamble } from "@/lib/run-prompts.mjs";
 import { capabilitiesFor } from "@/lib/worker-capabilities.mjs";
 import { fencingReport, isCliAllowedForCapabilities } from "@/lib/cli-fencing.mjs";
 import { claudeCliArgs } from "@/lib/claude-invocation.mjs";
@@ -66,13 +66,15 @@ export async function POST(req: Request) {
   const required = needsScript[kind];
   // CAREER_OPS_ROOT is runtime user data, not a build input. Tracing this
   // dynamic path would copy the whole web project into every server bundle.
+  // Mode files and scripts are engine code, so they are checked in the checkout —
+  // under the Custom Data Directory layout the data root has none of them.
   const requiredPath = required
-    ? path.join(/* turbopackIgnore: true */ careerOpsRoot(), required)
+    ? path.join(/* turbopackIgnore: true */ codeRoot(), required)
     : "";
   if (required && !fs.existsSync(/* turbopackIgnore: true */ requiredPath)) {
     return new Response(
       JSON.stringify({
-        error: `This needs a complete career-ops checkout (${required}). CAREER_OPS_ROOT has data only — point it at a full checkout.`,
+        error: `This needs a complete career-ops checkout (${required} is missing from ${codeRoot()}). Set CAREER_OPS_CODE_ROOT to a full checkout.`,
       }),
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
@@ -155,10 +157,16 @@ export async function POST(req: Request) {
   // is: the worker has no Bash (#2172), so it cannot run cv-templates.mjs and the
   // prompt used to name the base template outright, silently ignoring cv.template
   // (#4034). Only pdf fills a template, so nothing else pays for the lookup.
-  // The root is passed, not re-derived: a relative CAREER_OPS_PROFILE resolves
-  // against it, and `process.cwd()` here is `<core>/web` (see cv-template.mjs).
-  const cvTemplate = kind === "pdf" ? await resolveCvTemplate(careerOpsRoot()) : undefined;
-  const prompt = buildPrompt({ kind, input, memory: readMemory(), today, postedAt, lang, cvTemplate, verifyTarget });
+  // The roots are passed, not re-derived: a relative CAREER_OPS_PROFILE resolves
+  // against the checkout, and `process.cwd()` here is `<core>/web` (see cv-template.mjs).
+  const cvTemplate = kind === "pdf" ? await resolveCvTemplate(careerOpsRoot(), codeRoot()) : undefined;
+  // The worker's cwd is the data root. When the checkout is elsewhere (Custom
+  // Data Directory layout) the prompt is prefixed with where modes/templates/
+  // scripts live and Claude is granted that directory; same root → neither.
+  const extraCodeDir = separateCodeRoot();
+  const prompt =
+    layoutPreamble({ dataRoot: careerOpsRoot(), codeRoot: codeRoot() }) +
+    buildPrompt({ kind, input, memory: readMemory(), today, postedAt, lang, cvTemplate, verifyTarget });
 
   const isClaude = cliId === "claude";
   // Which tools each kind gets, and the whole claude argv, live in
@@ -174,7 +182,7 @@ export async function POST(req: Request) {
   // A CLI with its own structured stream gets the argv that turns it on, so its
   // stdout matches spec.parseEvent below; spec.args stays the plain-text argv the
   // envelope-parsing routes rely on.
-  const args = isClaude ? claudeCliArgs({ kind, prompt }) : (spec.streamArgs ?? spec.args)(prompt);
+  const args = isClaude ? claudeCliArgs({ kind, prompt, addDirs: extraCodeDir ? [extraCodeDir] : [] }) : (spec.streamArgs ?? spec.args)(prompt);
 
   // For write-needing kinds, snapshot reports/ so we can verify the worker
   // actually persisted (non-Claude CLIs lack Write auth and silently no-op).
@@ -462,6 +470,7 @@ export async function POST(req: Request) {
             spawnFn: spawn,
             execPath: process.execPath,
             root: careerOpsRoot(),
+            codeRoot: codeRoot(),
             pdfPaths: paths,
             format,
             reportNum: input,

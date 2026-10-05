@@ -64,7 +64,30 @@ export function rootScript(nameNoExt: string): string {
   // resolveRootScript() already returns the absolute `<checkout>/<name>.mjs`, and
   // its path.join carries the Turbopack ignore: the core checkout is selected at
   // runtime and must not be bundled into the web server output.
-  return resolveRootScript(resolveCodeRoot(process.cwd(), process.env), nameNoExt);
+  return resolveRootScript(codeRoot(), nameNoExt);
+}
+
+/**
+ * The engine checkout — where root `*.mjs` scripts, system `modes/*.md`,
+ * `templates/` and `lib/` live. Same directory as careerOpsRoot() in the
+ * default single-checkout layout; a different one under the Custom Data
+ * Directory layout (DATA_CONTRACT.md), where careerOpsRoot() holds user data
+ * only. Anything that is CODE resolves here; anything that is the user's data
+ * resolves against careerOpsRoot().
+ */
+export function codeRoot(): string {
+  return resolveCodeRoot(process.cwd(), process.env);
+}
+
+/**
+ * The engine checkout when it is NOT the data root (the Custom Data Directory
+ * layout), else null. A headless worker runs with cwd = careerOpsRoot(), so
+ * this is the directory it must additionally be granted (`--add-dir`) and told
+ * about (run-prompts.mjs's layoutPreamble) to reach modes, templates and scripts.
+ */
+export function separateCodeRoot(): string | null {
+  const code = path.resolve(codeRoot());
+  return code === path.resolve(careerOpsRoot()) ? null : code;
 }
 
 // Feature-detect the core's `tracker.mjs delete --num` row-delete (#1200) by probing
@@ -159,7 +182,7 @@ export function readApplications(): Application[] {
   // never a hand-written return-shape list that the two could drift from. The
   // third argument is the running system checkout, so a data-only root (no
   // tracker-aliases.json of its own) still resolves headers correctly.
-  return parseApplications(md, careerOpsRoot(), path.resolve(process.cwd(), "..")) as Application[];
+  return parseApplications(md, careerOpsRoot(), codeRoot()) as Application[];
 }
 
 export type StatusLogRow = {
@@ -574,6 +597,11 @@ function resolveEvalModeFile(root: string, modesDir: string): string {
  */
 export function readLanguageConfig(): LanguageConfig {
   const root = careerOpsRoot();
+  // Market mode directories (modes/de, modes/fr, …) are System Layer: they ship
+  // with the checkout, so they are looked up there, not in the data root — under
+  // the Custom Data Directory layout the data root's modes/ holds only the
+  // user's _profile.md / _custom.md / _brief.md.
+  const systemRoot = codeRoot();
   let modesDirs = ["modes"];
   let output = "en";
   try {
@@ -593,7 +621,7 @@ export function readLanguageConfig(): LanguageConfig {
           if (typeof value !== "string" || !value.trim()) return null;
           const candidate = value.trim().replace(/\/+$/, "");
           if (!MODES_DIR_RE.test(candidate)) return null;
-          return fs.existsSync(path.join(root, candidate)) ? candidate : null;
+          return fs.existsSync(path.join(systemRoot, candidate)) ? candidate : null;
         };
         // The first declared entry is primary. Do not filter it away and
         // silently promote a later market into the evaluation slot. This
@@ -614,5 +642,5 @@ export function readLanguageConfig(): LanguageConfig {
     /* no profile yet, or malformed — defaults are correct */
   }
   const modesDir = modesDirs[0];
-  return { output, modesDir, modesDirs, evalModeFile: resolveEvalModeFile(root, modesDir) };
+  return { output, modesDir, modesDirs, evalModeFile: resolveEvalModeFile(systemRoot, modesDir) };
 }

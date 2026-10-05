@@ -40,6 +40,36 @@ export function isShellSafeCompanyName(name) {
 const SAFE_COMPANY_NAME = /^[\p{L}\p{N} .,&'()+/-]+$/u;
 
 /**
+ * Where things live, stated up front for a worker whose data and code are in two
+ * different directories (the Custom Data Directory layout — DATA_CONTRACT.md).
+ *
+ * Workers run with cwd = the data root, so every user file a prompt names
+ * (cv.md, reports/, data/…) resolves as written. The prompts also name system
+ * files — modes/pdf.md, templates/…, `node merge-tracker.mjs` — that exist only
+ * in the checkout under that layout. Rewriting each prompt to absolute paths
+ * would fork every prompt in two; one preamble that maps the relative names is
+ * the smaller, auditable change, and the CLI's own `--add-dir` grants the access.
+ *
+ * Same directory (the default single checkout) → "" so the prompt is unchanged
+ * byte for byte.
+ *
+ * @param {{dataRoot: string, codeRoot: string}} roots absolute paths
+ * @returns {string} the preamble (ending in a blank line), or ""
+ */
+export function layoutPreamble({ dataRoot, codeRoot }) {
+  const norm = (p) => String(p ?? "").replace(/[\\/]+$/, "");
+  const data = norm(dataRoot);
+  const code = norm(codeRoot);
+  if (!data || !code || data === code) return "";
+  return `FILE LAYOUT — this install keeps the user's data and the career-ops code in two separate directories:
+- DATA_ROOT = ${data} (your working directory). The user's files live here: cv.md, article-digest.md, voice-dna.md, portals.yml, config/, modes/_profile.md, modes/_custom.md, modes/_brief.md, data/, reports/, output/, interview-prep/, jds/, documents/, writing-samples/, batch/tracker-additions/.
+- CODE_ROOT = ${code}. The system files live here: every other modes/*.md (e.g. modes/oferta.md, modes/pdf.md, modes/_shared.md, market dirs like modes/de/), templates/, and every *.mjs script.
+When these instructions name a system mode, a template, or a script by a relative path, read it from CODE_ROOT (e.g. ${code}/modes/pdf.md). Run scripts as \`node ${code}/<name>.mjs\` from DATA_ROOT; they locate DATA_ROOT on their own. Never create or edit files under CODE_ROOT.
+
+`;
+}
+
+/**
  * The exact prompt each worker kind is sent.
  *
  * Lives in a plain .mjs so it can be asserted on as a VALUE: the pdf prompt is

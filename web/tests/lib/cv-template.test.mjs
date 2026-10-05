@@ -165,3 +165,31 @@ test("an unresolvable checkout yields the base template rather than throwing", a
 
   assert.equal(await resolveCvTemplate(root), BASE_CV_TEMPLATE);
 });
+
+test("split data/code layout: scripts and templates from the checkout, profile from the data root", { skip: !coreUsable }, async () => {
+  // Given the Custom Data Directory layout (DATA_CONTRACT.md): the checkout holds
+  // cv-templates.mjs and templates/, a sibling data directory holds
+  // config/profile.yml, and the checkout's `.career-ops-data` marker joins them.
+  const data = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "cv-template-data-")));
+  const code = fakeCheckout({ profileAt: path.join(data, "config", "profile.yml") });
+  fs.writeFileSync(path.join(code, ".career-ops-data"), data);
+  const priorRoot = process.env.CAREER_OPS_ROOT;
+  const priorDataDir = process.env.CAREER_OPS_DATA_DIR;
+  delete process.env.CAREER_OPS_ROOT;
+  delete process.env.CAREER_OPS_DATA_DIR;
+  try {
+    // When the dashboard resolves the template with both roots
+    const rel = await asDashboard(code, undefined, () => resolveCvTemplate(data, code));
+
+    // Then the data root's cv.template is honored, named relative to the checkout
+    assert.equal(rel, "templates/cv-template.mine.html");
+    // ...whereas treating the data root as the checkout finds no resolver at all
+    assert.equal(await resolveCvTemplate(data), BASE_CV_TEMPLATE);
+  } finally {
+    if (priorRoot === undefined) delete process.env.CAREER_OPS_ROOT;
+    else process.env.CAREER_OPS_ROOT = priorRoot;
+    if (priorDataDir === undefined) delete process.env.CAREER_OPS_DATA_DIR;
+    else process.env.CAREER_OPS_DATA_DIR = priorDataDir;
+    fs.rmSync(data, { recursive: true, force: true });
+  }
+});
