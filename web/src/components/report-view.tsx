@@ -2,6 +2,8 @@ import Link from "next/link";
 import { ArrowLeft, FileText, ExternalLink, ChevronDown } from "lucide-react";
 import type { Application } from "@/lib/career-ops";
 import { Badge } from "@/components/ui/badge";
+import { ReplaceLinkButton } from "@/components/replace-link-button";
+import { VerifyLinkButton } from "@/components/verify-link-button";
 import { scoreTone, legitimacyTone, parseReport } from "@/lib/format";
 import {
   APPLY_LINE,
@@ -190,6 +192,10 @@ export function ReportView({
                     pdfReady={pdfReady}
                     quiet={quietApply}
                   />
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <ReplaceLinkButton target="report" report={id} />
+                    {applyUrl && <VerifyLinkButton n={id} company={companyName} />}
+                  </div>
                 </div>
               </div>
             );

@@ -1,5 +1,5 @@
 /**
- * @typedef {{ type: "text", text: string } | { type: "tool", name: string } | { type: "status", label: string }} JobProgress
+ * @typedef {{ type: "text", text: string } | { type: "tool", name: string } | { type: "status", label: string } | { type: "verify", status: string, label?: string }} JobProgress
  * @typedef {{ status: "done", tokens?: number, costUsd?: number } | { status: "error", message: string }} JobCompletion
  */
 
@@ -39,6 +39,8 @@ export async function readJobStream(stream, onProgress) {
     if (event?.type === "text" && typeof event.text === "string") onProgress(event);
     else if (event?.type === "tool" && typeof event.name === "string") onProgress(event);
     else if (event?.type === "status" && typeof event.label === "string") onProgress(event);
+    // verify-link result (status + label); the job store records it as the job result.
+    else if (event?.type === "verify" && typeof event.status === "string") onProgress(event);
     // Keepalives and future non-terminal events do not confirm completion.
     return null;
   };

@@ -9,7 +9,7 @@ import { cliSubstitutionNotice, cliUnavailableError, resolveCliOrFallback } from
 import { localISODate } from "@/lib/followups";
 import { accumulateTokens, hasNewCompletedReport, isFatalGenericStderr, killMsForKind, timeoutMessage } from "@/lib/run-cli-support.mjs";
 import { spawnHeadlessCli } from "@/lib/spawn-cli.mjs";
-import { careerOpsRoot, readMemory, findReportFile, readInbox, readScanDates, readLanguageConfig } from "@/lib/career-ops";
+import { careerOpsRoot, readMemory, findReportFile, readInbox, readScanDates, readLanguageConfig, readApplications } from "@/lib/career-ops";
 import { resolvePdfPaths, type PdfPaths } from "@/lib/pdf-paths.mjs";
 import { renderAndMarkPdf, writeCvHtml, pdfRunOutcome } from "@/lib/pdf-render.mjs";
 import { createCvEnvelopeFilter, type CvEnvelope } from "@/lib/cv-envelope.mjs";
@@ -20,6 +20,7 @@ import { claudeCliArgs } from "@/lib/claude-invocation.mjs";
 import { resolveCvTemplate } from "@/lib/core/cv-template.mjs";
 import { acquireTrackerWrite, releaseTrackerWrite } from "@/lib/core/run-registry";
 import { createRunFinalizer } from "@/lib/run-finalizer.mjs";
+import { parseVerifyEnvelope, reportPostingUrl, reportTitleParts, verifyStatusLabel, writeVerification } from "@/lib/verify-link.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,6 +100,30 @@ export async function POST(req: Request) {
 
   const today = localISODate();
 
+  // verify-link: everything the worker is told comes from the report on disk,
+  // never from the client — the client sends only a report number. The backend
+  // writes the result (verify-link.mjs); the worker holds no write tool.
+  let verifyTarget: { url: string; company: string; role: string; reportPath: string } | undefined;
+  if (kind === "verify-link") {
+    const jsonErr = (error: string, status: number) =>
+      new Response(JSON.stringify({ error }), { status, headers: { "Content-Type": "application/json" } });
+    if (!/^\d{1,4}$/.test(input)) return jsonErr("verify-link needs a report number.", 400);
+    const reportPath = findReportFile(input);
+    if (!reportPath) return jsonErr(`Report #${input} not found.`, 404);
+    let md: string;
+    try {
+      md = fs.readFileSync(/* turbopackIgnore: true */ reportPath, "utf8");
+    } catch {
+      return jsonErr(`Report #${input} could not be read.`, 500);
+    }
+    const url = reportPostingUrl(md);
+    if (!url) return jsonErr("This report has no http(s) **URL:** line to verify.", 400);
+    const n = parseInt(input, 10);
+    const app = readApplications().find((a) => parseInt(a.n, 10) === n);
+    const title = reportTitleParts(md);
+    verifyTarget = { url, company: app?.company || title.company, role: app?.role || title.role, reportPath };
+  }
+
   // Precompute deterministic scratch + final paths so the agent never chooses
   // its own filenames — the backend owns naming, writing (#2185) and rendering
   // (#2172). Nothing is cleared first: writeCvHtml rewrites the HTML
@@ -133,7 +158,7 @@ export async function POST(req: Request) {
   // The root is passed, not re-derived: a relative CAREER_OPS_PROFILE resolves
   // against it, and `process.cwd()` here is `<core>/web` (see cv-template.mjs).
   const cvTemplate = kind === "pdf" ? await resolveCvTemplate(careerOpsRoot()) : undefined;
-  const prompt = buildPrompt({ kind, input, memory: readMemory(), today, postedAt, lang, cvTemplate });
+  const prompt = buildPrompt({ kind, input, memory: readMemory(), today, postedAt, lang, cvTemplate, verifyTarget });
 
   const isClaude = cliId === "claude";
   // Which tools each kind gets, and the whole claude argv, live in
@@ -339,7 +364,11 @@ export async function POST(req: Request) {
       // and the PDF renders correctly server-side. Emit a throttled keepalive so
       // the stream never idles during the filtered phase. Unknown event types are
       // ignored by the client's switch, so this is safe for older tabs too.
+      // verify-link keeps every byte of agent text for the envelope parse on close.
+      // The envelope is a single short line, so it also stays visible in the log.
+      let verifyRaw = "";
       const sendAgentText = (text: string) => {
+        if (kind === "verify-link" && verifyRaw.length < 500_000) verifyRaw += text;
         const visible = cvFilter ? cvFilter.push(text) : text;
         if (visible) send({ type: "text", text: visible });
       };
@@ -529,6 +558,42 @@ export async function POST(req: Request) {
               return;
             }
             // saveCv already streamed the specific reason.
+          }
+          return close();
+        }
+
+        if (kind === "verify-link") {
+          // Same honesty gate as evaluate: no output, or a non-clean exit, never
+          // becomes a written verdict. Then the envelope decides, fail-closed.
+          const baseErr = noOutputError();
+          const envelope = parseVerifyEnvelope(verifyRaw);
+          if (baseErr) {
+            send({ type: "error", msg: baseErr });
+          } else if (!cleanExit || sawError) {
+            const detail = !sawError && stderrErrorSnippet ? ` (${stderrErrorSnippet})` : "";
+            send({ type: "error", msg: `The verify run hit an error before finishing, so the report was not changed.${detail}`.slice(0, 200) });
+          } else if (!envelope.ok) {
+            send({ type: "error", msg: `${envelope.error} The report was not changed.`.slice(0, 200) });
+          } else if (!verifyTarget) {
+            send({ type: "error", msg: "Internal error: verify-link ran without a target — please report this." });
+          } else {
+            try {
+              const written = writeVerification(verifyTarget.reportPath, envelope, { date: today, url: verifyTarget.url });
+              if (!written.ok) {
+                const why =
+                  written.error === "url-changed"
+                    ? "The report's link changed while verifying, so this result was not written. Verify again."
+                    : `Could not write the report (${written.error}).`;
+                send({ type: "error", msg: why });
+              } else {
+                const label = verifyStatusLabel(envelope);
+                send({ type: "status", label });
+                send({ type: "verify", status: envelope.status, label, line: written.line });
+                send({ type: "done", tokens: lastTokens, costUsd: lastCostUsd });
+              }
+            } catch (e) {
+              send({ type: "error", msg: `Could not write the report: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200) });
+            }
           }
           return close();
         }

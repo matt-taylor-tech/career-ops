@@ -13,6 +13,7 @@ import { TriageRow, type RowScore } from "./triage-row";
 import { ShortlistTray, type ShortItem } from "./shortlist-tray";
 import { cn } from "@/lib/cn";
 import { estimateRunCost } from "@/lib/run-cost-estimate.mjs";
+import { scoreTone } from "@/lib/format";
 
 const SHORTLIST_KEY = "career-ops:shortlist";
 const HIDDEN_KEY = "career-ops:hidden";
@@ -114,8 +115,14 @@ export function InboxTriage({ inbox }: { inbox: InboxJob[] }) {
     for (const [url, j] of best) {
       m.set(url, { score: j.result?.score ?? null, tone: j.result?.tone ?? "muted", jobId: j.id, running: j.status === "running" });
     }
+    // Fallback: the report on disk. The job history above is browser-local and
+    // capped, so a scored posting must not read as "not scored" once it ages out.
+    for (const j of inbox) {
+      if (m.has(j.url) || !j.report) continue;
+      m.set(j.url, { score: j.report.score, tone: j.report.score == null ? "muted" : scoreTone(`${j.report.score}`), href: `/pipeline/${j.report.n}`, running: false });
+    }
     return m;
-  }, [jobs]);
+  }, [jobs, inbox]);
 
   // facet options — only surface what's actually present in the (non-hidden) data
   const availSources = useMemo(() => {

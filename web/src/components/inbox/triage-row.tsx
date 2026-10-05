@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { Bookmark, BookmarkCheck, Loader2, X } from "lucide-react";
+import { Bookmark, BookmarkCheck, ExternalLink, Loader2, X } from "lucide-react";
 import type { InboxJob } from "@/lib/career-ops";
 import type { AtsSource } from "@/lib/explore";
 import { ATS_LABEL } from "@/lib/explore";
 import { Badge } from "@/components/ui/badge";
 import { CompanyLogo } from "@/components/company-logo";
+import { ReplaceLinkButton } from "@/components/replace-link-button";
 import { cn } from "@/lib/cn";
 
-export type RowScore = { score: number | null; tone: "good" | "warn" | "bad" | "muted"; jobId: string; running: boolean };
+// jobId → the live job page; href → a report page (score read from the report itself).
+export type RowScore = { score: number | null; tone: "good" | "warn" | "bad" | "muted"; jobId?: string; href?: string; running: boolean };
 
 function agoLabel(age: number | null): string | null {
   if (age == null) return null;
@@ -67,10 +69,20 @@ export function TriageRow({
       <CompanyLogo name={job.company} size={20} />
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm">
-          <span className="font-medium text-foreground">{job.company}</span>
-          <span className="text-muted"> · {job.role}</span>
-        </p>
+        {/* Company · role opens the original posting so a row can be judged before Save/Skip. */}
+        <a
+          href={job.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Open the posting in a new tab"
+          className="group flex min-w-0 items-center gap-1 text-sm hover:underline"
+        >
+          <span className="truncate">
+            <span className="font-medium text-foreground">{job.company}</span>
+            <span className="text-muted"> · {job.role}</span>
+          </span>
+          <ExternalLink className="size-3 shrink-0 text-faint group-hover:text-brand" />
+        </a>
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-faint">
           {job.location && <span className="truncate">{job.location}</span>}
           {source && <span className="rounded bg-surface-hover px-1 py-px font-medium text-muted">{ATS_LABEL[source]}</span>}
@@ -80,9 +92,11 @@ export function TriageRow({
         </p>
       </div>
 
+      <ReplaceLinkButton target="inbox" url={job.url} compact />
+
       {/* EVALUADA state (right-aligned, visually distinct from raw rows) */}
       {evaluated ? (
-        <Link href={`/jobs/${scored!.jobId}`} className="flex shrink-0 items-center gap-1.5 text-xs">
+        <Link href={scored!.href ?? `/jobs/${scored!.jobId}`} className="flex shrink-0 items-center gap-1.5 text-xs">
           {scored!.running ? (
             <>
               <Loader2 className="size-3.5 animate-spin text-brand" />

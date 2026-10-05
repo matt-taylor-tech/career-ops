@@ -140,8 +140,11 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
         let verdictLine = ""; // latched separately so the 8000-char tail can't drop it
         let doneTokens = 0; // per-run token cost, forwarded on the done event (#6)
         let doneCostUsd: number | null = null;
+        // verify-link reports a link status, not a 0–5 score: its result comes from
+        // the backend's "verify" event rather than a VERDICT line.
+        let verifyResult: JobResult | undefined;
         const finish = (status: "done" | "error", lastLabel?: string) => {
-          const result = status === "done" ? parseVerdict(verdictLine || text) : undefined;
+          const result = status === "done" ? verifyResult ?? parseVerdict(verdictLine || text) : undefined;
           const cost = status === "done" && doneTokens > 0 ? { tokens: doneTokens, usd: doneCostUsd ?? undefined } : undefined;
           patch(id, (j) => ({
             ...j,
@@ -160,7 +163,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
             }).catch(() => {});
             // Tell server-snapshot surfaces (Today, pipeline) to refetch — the
             // worker just wrote a real tracker row / report they don't yet see.
-            if (typeof window !== "undefined" && (opts.kind === "evaluate" || opts.kind === "pdf")) {
+            if (typeof window !== "undefined" && (opts.kind === "evaluate" || opts.kind === "pdf" || opts.kind === "verify-link")) {
               window.dispatchEvent(new CustomEvent("co-job-done", { detail: { kind: opts.kind, input: opts.input } }));
             }
           }
@@ -190,6 +193,9 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
               if (vm) verdictLine = vm[0];
               text = full.slice(-8000);
               patch(id, (j) => ({ ...j, text }));
+            } else if (ev.type === "verify") {
+              const tone = ev.status === "live" ? "good" : ev.status === "closed" ? "bad" : "warn";
+              verifyResult = { score: null, summary: String(ev.label ?? "").slice(0, 90), tone };
             }
           });
           if (completion.status === "error") {

@@ -18,6 +18,7 @@ import { resolvePdfIndexPath } from "@/lib/core/pdf-index";
 // don't drift into two different definitions of "which report does this
 // index row belong to" (#2599, #2008 review).
 import { pdfIndexEntryForReport } from "@/lib/apply/cv-selection.mjs";
+import { buildReportUrlIndex } from "./report-urls.mjs";
 
 /**
  * Resolve the career-ops "home" — the directory holding the user's sibling
@@ -85,7 +86,7 @@ function read(rel: string): string | null {
   }
 }
 
-export type InboxJob = { url: string; company: string; role: string; location?: string; compensation?: string; done: boolean; postedAt?: string };
+export type InboxJob = { url: string; company: string; role: string; location?: string; compensation?: string; done: boolean; postedAt?: string; report?: { n: string; score: number | null } };
 
 /** Parse data/pipeline.md. The row grammar and its labeled-segment handling
  *  live in pipeline-table.mjs — see there for the column rules (#1015, #1017). */
@@ -314,13 +315,28 @@ export type PipelineSummary = {
 export function pipelineSummary(): PipelineSummary {
   const root = careerOpsRoot();
   const scanDates = readScanDates();
+  const reportIndex = buildReportUrlIndex(path.join(root, "reports"));
+  const applications = readApplications();
+  // The report page is addressed by TRACKER row number, which need not equal the
+  // report number (row #104 can link report 106), so resolve through the links.
+  const rowByReport = new Map<string, string>();
+  for (const a of applications) {
+    const rep = a.report.match(/\]\([^)]*?(\d+)-[^)]*\.md\)/)?.[1];
+    if (rep) rowByReport.set(String(parseInt(rep, 10)), a.n);
+  }
   return {
     root,
     rootExists: fs.existsSync(root),
     // join the freshness date (first_seen) onto each raw posting — the inbox's
     // triage view orders/faceted-filters on it entirely client-side.
-    inbox: readInbox().map((j) => ({ ...j, postedAt: j.postedAt ?? scanDates.get(j.url) })),
-    applications: readApplications(),
+    // and the evaluation report that already scored the posting, if any — so an
+    // inbox score survives the browser's capped job history.
+    inbox: readInbox().map((j) => {
+      const hit = reportIndex.get(j.url);
+      const report = hit ? { n: rowByReport.get(hit.n) ?? hit.n, score: hit.score } : undefined;
+      return { ...j, postedAt: j.postedAt ?? scanDates.get(j.url), ...(report ? { report } : {}) };
+    }),
+    applications,
   };
 }
 
