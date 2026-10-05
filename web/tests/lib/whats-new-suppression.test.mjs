@@ -18,6 +18,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { evaluatedKeys, isEvaluated, suppressionKey } from "../../src/lib/whats-new-suppression.mjs";
+import { skippedInboxUrls } from "../../src/lib/whats-new-suppression.mjs";
 import { normalizeTextKey as norm } from "../../src/lib/core/normalize-text-key.mjs";
 
 const evaluatedAt = (...pairs) => evaluatedKeys(pairs.map(([company, role]) => ({ company, role })), norm);
@@ -88,4 +89,14 @@ test("missing rows and fields do not throw", () => {
   assert.equal(evaluatedKeys([{}], norm).size, 0);
   const keys = evaluatedAt(["Acme", "Staff Engineer"]);
   assert.equal(isEvaluated(keys, norm, undefined, undefined), false);
+});
+
+test("skippedInboxUrls: only done inbox rows are suppressed", () => {
+  const set = skippedInboxUrls([
+    { url: "https://a.example/1", done: true },
+    { url: "https://a.example/2", done: false },
+    null,
+  ]);
+  assert.deepEqual([...set], ["https://a.example/1"]);
+  assert.equal(skippedInboxUrls(undefined).size, 0);
 });

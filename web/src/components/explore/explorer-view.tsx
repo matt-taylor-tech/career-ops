@@ -90,9 +90,12 @@ export function ExplorerView({
   }, [seed.filters, initFilters, setMode, setAiIntent, discover, loadFresh]);
 
   const inboxUrls = useMemo(() => new Set(inboxSnapshot.map((j) => j.url)), [inboxSnapshot]);
+  // Postings skipped in the inbox (`- [x]` in pipeline.md) are a "not interested"
+  // decision — keep them out of Explore results instead of re-offering them.
+  const skippedUrls = useMemo(() => new Set(inboxSnapshot.filter((j) => j.done).map((j) => j.url)), [inboxSnapshot]);
   const enriched: EnrichedOffer[] = useMemo(
     () =>
-      offers.map((o) => {
+      offers.filter((o) => !skippedUrls.has(o.url)).map((o) => {
         const inPipeline = inboxUrls.has(o.url);
         const c = norm(o.company);
         const t = norm(o.title);
@@ -103,7 +106,7 @@ export function ExplorerView({
         });
         return { ...o, inPipeline, evaluatedN: ev?.n };
       }),
-    [offers, inboxUrls, appsSnapshot],
+    [offers, inboxUrls, skippedUrls, appsSnapshot],
   );
 
   const isAi = mode === "ai";

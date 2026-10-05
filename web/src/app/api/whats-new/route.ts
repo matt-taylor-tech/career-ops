@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { careerOpsRoot, readApplications } from "@/lib/career-ops";
+import { careerOpsRoot, readApplications, readInbox } from "@/lib/career-ops";
 import { getNormalizeTextKey } from "@/lib/core/text-key";
-import { evaluatedKeys, isEvaluated } from "@/lib/whats-new-suppression.mjs";
+import { evaluatedKeys, isEvaluated, skippedInboxUrls } from "@/lib/whats-new-suppression.mjs";
 import type { DiscoveredOffer } from "@/lib/explore";
 import { collectWhatsNew, resolveOfferLimit } from "@/lib/whats-new.mjs";
 
@@ -39,11 +39,14 @@ export async function GET(req: Request) {
   // entire board after one evaluation (#3131). See lib/whats-new-suppression.
   const normalizeTextKey = await getNormalizeTextKey();
   const evaluated = evaluatedKeys(readApplications(), normalizeTextKey);
+  // Roles skipped in the inbox → also not "new" (a Skip only marks pipeline.md).
+  const skipped = skippedInboxUrls(readInbox());
 
   const toOffer = (c: string[]): DiscoveredOffer | null => {
     const [url, firstSeen, portal, title, company, status, location] = c;
     if (!url || !/^https?:\/\//i.test(url)) return null;
     if (status && /skipped|expired/i.test(status)) return null;
+    if (skipped.has(url)) return null;
     if (isEvaluated(evaluated, normalizeTextKey, company, title)) return null;
     return {
       url,

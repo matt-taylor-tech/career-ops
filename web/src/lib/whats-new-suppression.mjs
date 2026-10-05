@@ -74,3 +74,15 @@ export function isEvaluated(keys, norm, company, title) {
   if (!company || !norm(company, " ")) return false;
   return keys.has(suppressionKey(norm, company, title));
 }
+
+/**
+ * Posting URLs the user skipped in the inbox (`- [x]` rows of data/pipeline.md).
+ * A Skip is a "not interested" decision, so the same posting must not come back
+ * as a "new match" on Home or Explore just because scan-history still lists it.
+ *
+ * @param {Array<{ url: string, done: boolean }>} inbox
+ * @returns {Set<string>}
+ */
+export function skippedInboxUrls(inbox) {
+  return new Set((inbox ?? []).filter((j) => j && j.done && typeof j.url === "string").map((j) => j.url));
+}
