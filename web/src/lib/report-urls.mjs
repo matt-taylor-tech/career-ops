@@ -69,3 +69,14 @@ export function buildReportUrlIndex(reportsDir) {
   }
   return index;
 }
+
+const DECIDED = new Set(["skip", "discarded", "rejected", "applied", "responded", "interview", "offer", "hired"]);
+
+/**
+ * Has the user already acted on this tracker status? Everything past
+ * "Evaluated" means the posting is decided and no longer needs triage.
+ * Unknown/blank statuses count as undecided, so nothing is hidden by accident.
+ */
+export function isDecidedStatus(status) {
+  return DECIDED.has(String(status ?? "").replace(/\*/g, "").trim().toLowerCase());
+}

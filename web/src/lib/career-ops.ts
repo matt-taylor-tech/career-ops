@@ -18,7 +18,7 @@ import { resolvePdfIndexPath } from "@/lib/core/pdf-index";
 // don't drift into two different definitions of "which report does this
 // index row belong to" (#2599, #2008 review).
 import { pdfIndexEntryForReport } from "@/lib/apply/cv-selection.mjs";
-import { buildReportUrlIndex } from "./report-urls.mjs";
+import { buildReportUrlIndex, isDecidedStatus } from "./report-urls.mjs";
 
 /**
  * Resolve the career-ops "home" — the directory holding the user's sibling
@@ -343,9 +343,13 @@ export function pipelineSummary(): PipelineSummary {
   // The report page is addressed by TRACKER row number, which need not equal the
   // report number (row #104 can link report 106), so resolve through the links.
   const rowByReport = new Map<string, string>();
+  const statusByReport = new Map<string, string>();
   for (const a of applications) {
     const rep = a.report.match(/\]\([^)]*?(\d+)-[^)]*\.md\)/)?.[1];
-    if (rep) rowByReport.set(String(parseInt(rep, 10)), a.n);
+    if (rep) {
+      rowByReport.set(String(parseInt(rep, 10)), a.n);
+      statusByReport.set(String(parseInt(rep, 10)), a.status);
+    }
   }
   return {
     root,
@@ -354,11 +358,19 @@ export function pipelineSummary(): PipelineSummary {
     // triage view orders/faceted-filters on it entirely client-side.
     // and the evaluation report that already scored the posting, if any — so an
     // inbox score survives the browser's capped job history.
-    inbox: readInbox().map((j) => {
-      const hit = reportIndex.get(j.url);
-      const report = hit ? { n: rowByReport.get(hit.n) ?? hit.n, score: hit.score } : undefined;
-      return { ...j, postedAt: j.postedAt ?? scanDates.get(j.url), ...(report ? { report } : {}) };
-    }),
+    inbox: readInbox()
+      // A posting whose evaluated tracker row is already decided (SKIP, Applied,
+      // Rejected, …) has left the triage stage: keep it out of the inbox even
+      // though its pipeline.md row was never checked off. Evaluated stays.
+      .filter((j) => {
+        const hit = reportIndex.get(j.url);
+        return !hit || !isDecidedStatus(statusByReport.get(hit.n));
+      })
+      .map((j) => {
+        const hit = reportIndex.get(j.url);
+        const report = hit ? { n: rowByReport.get(hit.n) ?? hit.n, score: hit.score } : undefined;
+        return { ...j, postedAt: j.postedAt ?? scanDates.get(j.url), ...(report ? { report } : {}) };
+      }),
     applications,
   };
 }

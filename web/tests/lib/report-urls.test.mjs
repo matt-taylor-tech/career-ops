@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { reportPostingUrls, reportScore, buildReportUrlIndex } from "../../src/lib/report-urls.mjs";
+import { reportPostingUrls, reportScore, buildReportUrlIndex, isDecidedStatus } from "../../src/lib/report-urls.mjs";
 
 const AGG = "https://builtin.com/job/infrastructure-cloud-systems-engineer/11408117";
 const EMP = "https://careers.gocourser.com/apply/BxEmwGJ9Y9/Infrastructure-Cloud-Systems-Engineer";
@@ -56,4 +56,9 @@ test("index maps every claimed URL; newer report wins; sentinels skipped", () =>
   assert.deepEqual(idx.get(EMP), { n: "134", score: 4.1 });
   assert.equal(buildReportUrlIndex(path.join(dir, "missing")).size, 0);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("isDecidedStatus: everything past Evaluated is decided; unknown is not", () => {
+  for (const st of ["SKIP", "Discarded", "Rejected", "Applied", "Responded", "Interview", "Offer", "Hired", "**SKIP**"]) assert.equal(isDecidedStatus(st), true, st);
+  for (const st of ["Evaluated", "", undefined, "something new"]) assert.equal(isDecidedStatus(st), false, String(st));
 });
