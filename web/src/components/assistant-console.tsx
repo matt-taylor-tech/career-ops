@@ -214,9 +214,15 @@ export function AssistantConsole() {
       }
     }
     read();
+    // "storage" only fires for OTHER tabs; a Config save in this same tab announces
+    // itself with co-config-saved, and opening the panel re-reads as a backstop.
     window.addEventListener("storage", read);
-    return () => window.removeEventListener("storage", read);
-  }, []);
+    window.addEventListener("co-config-saved", read);
+    return () => {
+      window.removeEventListener("storage", read);
+      window.removeEventListener("co-config-saved", read);
+    };
+  }, [open]);
 
   async function chatRequest(url: string, init?: RequestInit) {
     const response = await fetch(url, init);
