@@ -203,7 +203,7 @@ export function ScheduledJobsView() {
               </div>
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  {scheduler.platform === "win32" ? "Windows Task Scheduler Integration" : "Manual scans"}
+                  {scheduler.platform === "win32" ? "Windows Task Scheduler Integration" : scheduler.platform === "darwin" ? "macOS launchd integration" : "Manual scans"}
                   <span
                     className={
                       scheduler.task.exists && scheduler.task.enabled
@@ -211,7 +211,7 @@ export function ScheduledJobsView() {
                         : "rounded bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
                     }
                   >
-                    {scheduler.platform !== "win32"
+                    {scheduler.platform !== "win32" && scheduler.platform !== "darwin"
                       ? "No automatic schedule"
                       : scheduler.task.exists
                         ? scheduler.task.enabled ? "Task enabled" : "Task disabled"
@@ -219,15 +219,17 @@ export function ScheduledJobsView() {
                   </span>
                 </div>
                 <div className="mt-0.5 text-xs text-muted">
-                  {scheduler.platform !== "win32"
-                    ? "On macOS and Linux, saved scans only run when you choose Run now."
+                  {scheduler.platform !== "win32" && scheduler.platform !== "darwin"
+                    ? "On Linux, saved scans only run when you choose Run now."
                     : scheduler.task.exists
                       ? "Next OS check: " + formatTaskTime(scheduler.task.nextRun) + " · Last OS check: " + formatTaskTime(scheduler.task.lastRun)
-                      : "Install the Windows task with web/scripts/install-scan-schedule.ps1 to run due jobs automatically."}
+                      : scheduler.platform === "darwin"
+                        ? "Install the macOS agent with web/scripts/install-scan-schedule.sh to run due jobs automatically."
+                        : "Install the Windows task with web/scripts/install-scan-schedule.ps1 to run due jobs automatically."}
                 </div>
               </div>
             </div>
-            {scheduler.platform === "win32" && <button
+            {(scheduler.platform === "win32" || scheduler.platform === "darwin") && <button
               type="button"
               onClick={handleTriggerOsScheduler}
               disabled={osRunning || scheduler.running || !scheduler.available}

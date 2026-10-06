@@ -23,7 +23,54 @@ export type SchedulerStatus = {
   };
 };
 
+// macOS: the launchd agent from web/scripts/install-scan-schedule.sh. launchd
+// keeps no next/last-run times, so the last run is the agent log's mtime (the
+// runner writes to it every interval) and the next is that plus the interval.
+const LAUNCHD_LABEL = "com.career-ops.recurring-scan";
+// Fallback only; the real interval is read from the installed plist.
+const LAUNCHD_DEFAULT_INTERVAL_MS = 60 * 60 * 1_000;
+
+function launchdIntervalMs(): number {
+  try {
+    const plist = fs.readFileSync(path.join(process.env.HOME ?? "", "Library", "LaunchAgents", `${LAUNCHD_LABEL}.plist`), "utf8");
+    const secs = Number(plist.match(/<key>StartInterval<\/key>\s*<integer>(\d+)<\/integer>/)?.[1]);
+    return Number.isFinite(secs) && secs > 0 ? secs * 1_000 : LAUNCHD_DEFAULT_INTERVAL_MS;
+  } catch {
+    return LAUNCHD_DEFAULT_INTERVAL_MS;
+  }
+}
+
+async function readLaunchdTask(): Promise<SchedulerStatus["task"]> {
+  const none = { exists: false, enabled: false, status: null, nextRun: null, lastRun: null };
+  const uid = process.getuid?.();
+  if (uid === undefined) return none;
+  const domain = `gui/${uid}`;
+  try {
+    await execFileAsync("launchctl", ["print", `${domain}/${LAUNCHD_LABEL}`], { timeout: 5_000, maxBuffer: 256 * 1024 });
+  } catch {
+    return none;
+  }
+  let enabled = true;
+  try {
+    const { stdout } = await execFileAsync("launchctl", ["print-disabled", domain], { timeout: 5_000, maxBuffer: 256 * 1024 });
+    if (new RegExp(`"${LAUNCHD_LABEL.replace(/\./g, "\\.")}"\\s*=>\\s*(true|disabled)`).test(stdout)) enabled = false;
+  } catch {
+    /* unknown: keep enabled */
+  }
+  let lastRun: string | null = null;
+  let nextRun: string | null = null;
+  try {
+    const mtime = fs.statSync(path.join(process.env.HOME ?? "", "Library", "Logs", "career-ops-scan.log")).mtime;
+    lastRun = mtime.toISOString();
+    if (enabled) nextRun = new Date(mtime.getTime() + launchdIntervalMs()).toISOString();
+  } catch {
+    /* no run logged yet */
+  }
+  return { exists: true, enabled, status: enabled ? "Loaded" : "Disabled", nextRun, lastRun };
+}
+
 async function readTask(): Promise<SchedulerStatus["task"]> {
+  if (process.platform === "darwin") return readLaunchdTask();
   if (process.platform !== "win32") {
     return { exists: false, enabled: false, status: null, nextRun: null, lastRun: null };
   }
