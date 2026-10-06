@@ -108,7 +108,7 @@ test("scan command honors the selected engine and bounded filters", () => {
   });
   assert.deepEqual(buildScanCommand({ engine: "full", filters }), {
     script: "scan-ats-full.mjs",
-    args: ["--since", "5", "--ats", "lever,ashby", "--limit", "500", "--json"],
+    args: ["--since", "5", "--ats", "lever,ashby", "--limit", "500", "--shuffle", "--json"],
   });
 });
 
@@ -171,7 +171,7 @@ test("scheduled scan never starts without title keywords", () => {
 
 test("scan command treats null and empty numeric filters as absent", () => {
   assert.deepEqual(buildScanCommand({ engine: "full", filters: { sinceDays: null, limitPerAts: "" } }).args, [
-    "--since", "7", "--ats", "greenhouse,lever,ashby,workday", "--limit", "150", "--json",
+    "--since", "7", "--ats", "greenhouse,lever,ashby,workday", "--limit", "150", "--shuffle", "--json",
   ]);
 });
 

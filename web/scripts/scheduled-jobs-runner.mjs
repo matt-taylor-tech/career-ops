@@ -123,7 +123,9 @@ export function buildScanCommand(job) {
   const limit = numericFilter(filters.limitPerAts, 150, 50, 500);
   return {
     script: "scan-ats-full.mjs",
-    args: ["--since", String(sinceDays), "--ats", ats, "--limit", String(limit), "--json"],
+    // --shuffle: a capped sweep otherwise re-scans the same alphabetical prefix
+    // of each ATS dataset every run; a random sample reaches new companies daily.
+    args: ["--since", String(sinceDays), "--ats", ats, "--limit", String(limit), "--shuffle", "--json"],
   };
 }
 
