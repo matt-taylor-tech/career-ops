@@ -142,6 +142,18 @@ export function scannerSupportsJson(): boolean {
   }
 }
 
+// Same probe for --shuffle. Explore runs --dry-run with a per-source cap, and without
+// --shuffle every cast took the dataset's alphabetical prefix, so re-casting with
+// the same filters searched the exact same companies. A random sample per cast
+// means "re-cast to look deeper" actually reaches new companies.
+export function scannerSupportsShuffle(): boolean {
+  try {
+    return fs.readFileSync(rootScript("scan-ats-full"), "utf8").includes("--shuffle");
+  } catch {
+    return false;
+  }
+}
+
 type JsonOffer = { company?: string; title?: string; url?: string; location?: string | null; postedAt?: string | null; source?: string };
 type ScanJson = {
   companiesAvailable?: number;
@@ -205,6 +217,7 @@ function runScanner(
       String(Math.max(1, filters.limitPerAts || 150)),
     ];
     if (useJson) args.push("--json");
+    if (scannerSupportsShuffle()) args.push("--shuffle");
 
     const child = spawn(process.execPath, args, {
       cwd: careerOpsRoot(),

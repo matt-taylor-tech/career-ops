@@ -332,7 +332,7 @@ function DegradedCard({
     "The public ATS directories didn’t respond — usually a transient network hiccup or rate-limit, so nothing could be searched. This isn’t “all caught up”; a retry in a moment usually clears it.";
   if (companiesScanned > 0 && capHit) {
     title = "No matches in the slice we searched.";
-    body = `The scan is capped, so it only searched ${companiesScanned.toLocaleString()}${companiesAvailable > companiesScanned ? ` of ${companiesAvailable.toLocaleString()}` : ""} companies — not the whole network. Raise scan depth (Refine search) or narrow your roles, then re-cast to look deeper.`;
+    body = `The scan is capped, so it only searched ${companiesScanned.toLocaleString()}${companiesAvailable > companiesScanned ? ` of ${companiesAvailable.toLocaleString()}` : ""} companies — a random sample, not the whole network. Each cast samples different companies, so re-casting searches new ground; raising scan depth (Refine search) covers more per cast.`;
   } else if (companiesScanned > 0 && droppedNoDate > 0) {
     title = "Fresh-looking roles were skipped for missing dates.";
     body = `${droppedNoDate.toLocaleString()} posting${droppedNoDate === 1 ? "" : "s"} matched but had no clear publish date, so the freshness filter dropped them. Widening the time window often brings dated equivalents back.`;
