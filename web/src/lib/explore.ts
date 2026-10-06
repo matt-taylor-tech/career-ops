@@ -37,7 +37,7 @@ export const DEFAULT_FILTERS: ExploreFilters = {
   alwaysAllow: [],
   sinceDays: 7,
   ats: [...ATS_SOURCES],
-  limitPerAts: 150,
+  limitPerAts: 500,
 };
 
 /** Banded title-vs-profile overlap (web/src/lib/title-fit.mjs). Words, not
