@@ -102,6 +102,17 @@
     line-height: 1.2;
   }
 
+  /* Conservative theme: navy and slate for banks, insurers, government and
+     defense contractors, healthcare systems, legal, utilities. Selected per CV
+     with payload `theme: "navy"`; the default is the teal/purple above. */
+  body.theme-navy {
+    --accent-color: hsl(215 55% 28%);
+    --secondary-color: hsl(215, 25%, 45%);
+    --tag-color: hsl(215, 55%, 26%);
+    --tag-bg: hsl(215, 30%, 95%);
+    --tag-border: hsl(215, 30%, 88%);
+  }
+
   .header-gradient {
     height: 2px;
     background: linear-gradient(to right, var(--accent-color), var(--secondary-color));
@@ -684,7 +695,7 @@
   }
 </style>
 </head>
-<body>
+<body class="{{THEME_CLASS}}">
 <div class="page">
 
   {{PHOTO}}

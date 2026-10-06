@@ -668,6 +668,9 @@ function renderReport(payload, partials) {
 
   const substitutions = {
     LANG: escapeHtml(payload.lang || 'en'),
+    // Per-CV color theme: "navy" for conservative employers; anything else
+    // (or absent) keeps the template's default teal/purple.
+    THEME_CLASS: payload.theme === 'navy' ? 'theme-navy' : '',
     PAGE_WIDTH: pageWidth,
     NAME: escapeHtml(candidate.name || ''),
     SECTION_SUMMARY: escapeHtml(sectionTitles.summary),
