@@ -141,7 +141,7 @@ function statusAliasMap() {
   return (aliasMapCache = map);
 }
 
-const ACTIONABLE_STATUSES = ['applied', 'responded', 'interview'];
+const ACTIONABLE_STATUSES = ['applied', 'responded', 'assessment', 'interview'];
 
 export function normalizeStatus(raw) {
   // foldStatusInput, not a bare toLowerCase: JS lowercases the Turkish dotted
@@ -440,10 +440,11 @@ export function addDays(date, days) {
 // below is what the CLI path uses.
 function parseTrackerContent(content) {
   const lines = String(content ?? '').split('\n');
-  const colmap = resolveColumns(lines);
+  const parseOptions = { allowTabs: true, allowIndentation: true };
+  const colmap = resolveColumns(lines, parseOptions);
   const entries = [];
   for (const line of lines) {
-    const row = parseTrackerRow(line, colmap);
+    const row = parseTrackerRow(line, colmap, parseOptions);
     if (row) entries.push(row);
   }
   return entries;
@@ -768,10 +769,11 @@ export function resolveReportPath(reportField, appsFile = APPS_FILE, repoRoot = 
 }
 
 // --- Compute urgency ---
-// For responded/interview, logged follow-ups CLEAR the overdue state and the
+// For responded/assessment/interview, logged follow-ups CLEAR the overdue state and the
 // clock restarts from the last touch (re-overdue every responded_subsequent
 // days) — matching the cadence table in modes/followup.md ("Responded: every
-// 3 days · Interview: thank-you, then every 3 days, no limit").
+// 3 days · Assessment uses the responded cadence · Interview: thank-you, then
+// every 3 days, no limit").
 export function computeUrgency(status, daysSinceApp, daysSinceLastFollowup, followupCount) {
   if (status === 'applied') {
     if (followupCount >= CADENCE.applied_max_followups) return 'cold';
@@ -779,7 +781,7 @@ export function computeUrgency(status, daysSinceApp, daysSinceLastFollowup, foll
     if (followupCount > 0 && daysSinceLastFollowup !== null && daysSinceLastFollowup >= CADENCE.applied_subsequent) return 'overdue';
     return 'waiting';
   }
-  if (status === 'responded') {
+  if (status === 'responded' || status === 'assessment') {
     if (daysSinceLastFollowup !== null) {
       return daysSinceLastFollowup >= CADENCE.responded_subsequent ? 'overdue' : 'waiting';
     }
@@ -804,7 +806,7 @@ export function computeNextFollowupDate(status, appDate, lastFollowupDate, follo
     if (lastFollowupDate) return addDays(parseDate(lastFollowupDate), CADENCE.applied_subsequent);
     return addDays(parseDate(appDate), CADENCE.applied_first);
   }
-  if (status === 'responded') {
+  if (status === 'responded' || status === 'assessment') {
     if (lastFollowupDate) return addDays(parseDate(lastFollowupDate), CADENCE.responded_subsequent);
     return addDays(parseDate(appDate), CADENCE.responded_initial);
   }

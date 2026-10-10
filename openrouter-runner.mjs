@@ -112,6 +112,7 @@ if (blacklistedModels.size > 0) {
   console.log(`[blacklist] Loaded ${blacklistedModels.size} pre-blacklisted model(s) from disk.`);
 }
 // 429 failure count per model — auto-blacklist after 3 consecutive 429s
+// (a success or any other failure resets the count)
 const rateLimitCounts = {};
 
 // ---------------------------------------------------------------------------
@@ -338,6 +339,7 @@ async function callOpenRouter(systemPrompt, userMessage) {
       const usage = normalizeOpenAIUsage(data.usage);
 
       modelIndex = (modelIndex + attempt + 1) % active.length;
+      delete rateLimitCounts[model];
       console.log('OK');
       return { content, usage };
 
@@ -363,6 +365,7 @@ async function callOpenRouter(systemPrompt, userMessage) {
           await new Promise(r => setTimeout(r, 800));
         }
       } else {
+        delete rateLimitCounts[model];
         console.log(`FAILED (${msg})`);
         await new Promise(r => setTimeout(r, 800));
       }
@@ -371,6 +374,10 @@ async function callOpenRouter(systemPrompt, userMessage) {
 
   throw new Error(`All ${active.length} active models failed. Last error: ${lastError?.message}`);
 }
+
+// Exported so tests/openrouter-runner-429-reset.test.mjs can script fetch()
+// against the real rotation and blacklist logic without a network or a CLI run.
+export { callOpenRouter, rateLimitCounts, blacklistedModels };
 
 // ---------------------------------------------------------------------------
 // Context loading
@@ -540,8 +547,8 @@ function markPipelineDone(url) {
 // silently, because every reader skips a malformed or missing row quietly.
 //
 // Delegating fixes three things at once that were all symptoms of hand-rolling
-// the write: the lock, the row format (formatScanHistoryRow emits all twelve
-// columns; this module wrote seven and created a seven-column header), and the
+// the write: the lock, the row format (formatScanHistoryRow emits every trailing
+// column; this module wrote seven and created a seven-column header), and the
 // date (the shared path stamps the local day, this one stamped the UTC day —
 // the defect #3240/#3241 fixed in the other scanners, which this module escaped
 // because that census finds scanners by looking for appendToScanHistory calls).
