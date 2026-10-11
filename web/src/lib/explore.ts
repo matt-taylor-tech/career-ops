@@ -40,6 +40,10 @@ export const DEFAULT_FILTERS: ExploreFilters = {
   limitPerAts: 500,
 };
 
+// Upper bound on companies sampled per source. Mirrored in
+// scripts/scheduled-jobs-runner.mjs (a plain script that cannot import this file).
+export const MAX_LIMIT_PER_ATS = 2000;
+
 /** Banded title-vs-profile overlap (web/src/lib/title-fit.mjs). Words, not
  *  numbers, so it can't be mistaken for the evaluation's real 1–5 / A–F. */
 export type FitBand = "strong" | "related" | "weak";
@@ -151,8 +155,8 @@ export function parseExplorePatch(
   }
   if (raw.since !== undefined) next.sinceDays = clampNum(raw.since, 1, 60, base.sinceDays);
   if (raw.sinceDays !== undefined) next.sinceDays = clampNum(raw.sinceDays, 1, 60, base.sinceDays);
-  if (raw.limit !== undefined) next.limitPerAts = clampNum(raw.limit, 50, 500, base.limitPerAts);
-  if (raw.limitPerAts !== undefined) next.limitPerAts = clampNum(raw.limitPerAts, 50, 500, base.limitPerAts);
+  if (raw.limit !== undefined) next.limitPerAts = clampNum(raw.limit, 50, MAX_LIMIT_PER_ATS, base.limitPerAts);
+  if (raw.limitPerAts !== undefined) next.limitPerAts = clampNum(raw.limitPerAts, 50, MAX_LIMIT_PER_ATS, base.limitPerAts);
   if (raw.ats !== undefined) next.ats = cleanAts(raw.ats);
   return next;
 }
