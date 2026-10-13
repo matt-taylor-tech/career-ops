@@ -1,6 +1,7 @@
 // @ts-check
 /** @typedef {import('./_types.js').Provider} Provider */
 import { coerceId } from './_ids.mjs';
+import { htmlToText } from './_html-to-text.mjs';
 
 // Lever provider — hits the public postings endpoint.
 // Auto-detects from careers_url via jobs.(eu.)?lever.co/<slug>.
@@ -69,6 +70,29 @@ function resolveLocation(categories) {
   return merged.join('; ');
 }
 
+/**
+ * The text the description filters (content_filter, its by_title_keyword
+ * gates, visa_filter) match against: the same three parts browser-extract's
+ * normalizeLeverJob() builds a JD from, in page order. `descriptionPlain` alone
+ * is the intro only; the requirements live in `lists` and the trailing copy in
+ * `additionalPlain`, both already in this board-wide payload. Lever also leaves
+ * `descriptionPlain` empty while `description` holds the HTML (3817 of 3933
+ * jobgether postings on 2026-10-10), so the intro falls back to that HTML.
+ *
+ * Exported for tests.
+ *
+ * @param {any} j - one posting from the v0 postings list
+ * @returns {string}
+ */
+export function leverDescription(j) {
+  const str = (/** @type {unknown} */ v) => (typeof v === 'string' ? v.trim() : '');
+  const intro = str(j?.descriptionPlain) || htmlToText(j?.description);
+  const lists = Array.isArray(j?.lists)
+    ? j.lists.map((/** @type {any} */ l) => [str(l?.text), htmlToText(l?.content)].filter(Boolean).join('\n'))
+    : [];
+  return [intro, ...lists, str(j?.additionalPlain)].filter(Boolean).join('\n\n');
+}
+
 /** @type {Provider} */
 export default {
   id: 'lever',
@@ -99,7 +123,7 @@ export default {
       location: resolveLocation(j.categories),
       // Lever's v0 postings list ships the full description for free (same
       // payload, no per-job request) — enables scan.mjs content_filter.
-      description: typeof j.descriptionPlain === 'string' ? j.descriptionPlain : '',
+      description: leverDescription(j),
       postedAt: typeof j.createdAt === 'number' ? j.createdAt : undefined,
       // Lever's posting uuid; the v0 board API exposes no employer requisition
       // field, so requisitionId stays unset rather than being inferred.

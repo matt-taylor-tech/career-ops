@@ -1,17 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { Bookmark, BookmarkCheck, ExternalLink, Loader2, X } from "lucide-react";
+import { Bookmark, BookmarkCheck, Loader2, X } from "lucide-react";
 import type { InboxJob } from "@/lib/career-ops";
 import type { AtsSource } from "@/lib/explore";
 import { ATS_LABEL } from "@/lib/explore";
+import { unscoredInboxHref } from "@/lib/posting-url.mjs";
 import { Badge } from "@/components/ui/badge";
 import { CompanyLogo } from "@/components/company-logo";
 import { ReplaceLinkButton } from "@/components/replace-link-button";
 import { cn } from "@/lib/cn";
+import { inboxScoreTarget } from "@/lib/inbox-score-target.mjs";
 
-// jobId → the live job page; href → a report page (score read from the report itself).
-export type RowScore = { score: number | null; tone: "good" | "warn" | "bad" | "muted"; jobId?: string; href?: string; running: boolean };
+export type RowScore = { score: number | null; tone: "good" | "warn" | "bad" | "muted"; jobId: string; running: boolean; reportN?: number | null };
 
 function agoLabel(age: number | null): string | null {
   if (age == null) return null;
@@ -47,7 +48,15 @@ export function TriageRow({
   onSkip: () => void;
 }) {
   const ago = agoLabel(age);
-  const evaluated = !!scored && (scored.running || scored.score != null);
+  const target = inboxScoreTarget(scored);
+  const evaluated = target.evaluated;
+  const postingHref = unscoredInboxHref(job.url, evaluated);
+  const title = (
+    <>
+      <span className="font-medium text-foreground">{job.company}</span>
+      <span className="text-muted"> · {job.role}</span>
+    </>
+  );
 
   return (
     <li
@@ -69,20 +78,15 @@ export function TriageRow({
       <CompanyLogo name={job.company} size={20} />
 
       <div className="min-w-0 flex-1">
-        {/* Company · role opens the original posting so a row can be judged before Save/Skip. */}
-        <a
-          href={job.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Open the posting in a new tab"
-          className="group flex min-w-0 items-center gap-1 text-sm hover:underline"
-        >
-          <span className="truncate">
-            <span className="font-medium text-foreground">{job.company}</span>
-            <span className="text-muted"> · {job.role}</span>
-          </span>
-          <ExternalLink className="size-3 shrink-0 text-faint group-hover:text-brand" />
-        </a>
+        <p className="truncate text-sm">
+          {postingHref ? (
+            <a href={postingHref} target="_blank" rel="noreferrer" className="hover:text-brand">
+              {title}
+            </a>
+          ) : (
+            title
+          )}
+        </p>
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-faint">
           {job.location && <span className="truncate">{job.location}</span>}
           {source && <span className="rounded bg-surface-hover px-1 py-px font-medium text-muted">{ATS_LABEL[source]}</span>}
@@ -95,15 +99,17 @@ export function TriageRow({
       <ReplaceLinkButton target="inbox" url={job.url} compact />
 
       {/* EVALUADA state (right-aligned, visually distinct from raw rows) */}
-      {evaluated ? (
-        <Link href={scored!.href ?? `/jobs/${scored!.jobId}`} className="flex shrink-0 items-center gap-1.5 text-xs">
+      {evaluated && target.href ? (
+        <Link href={target.href} className="flex shrink-0 items-center gap-1.5 text-xs">
           {scored!.running ? (
             <>
               <Loader2 className="size-3.5 animate-spin text-brand" />
               <span className="text-brand max-sm:hidden">Scoring…</span>
             </>
-          ) : (
+          ) : target.showScore ? (
             <Badge tone={scored!.tone}>{scored!.score}/5</Badge>
+          ) : (
+            <span className="text-brand">Report</span>
           )}
         </Link>
       ) : (

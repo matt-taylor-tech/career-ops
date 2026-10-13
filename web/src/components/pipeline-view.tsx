@@ -3,7 +3,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Search, ChevronsUpDown, X, Compass, ArrowRight } from "lucide-react";
+import { Search, ChevronsUpDown, X, Compass, ArrowRight, ExternalLink } from "lucide-react";
 import type { Application, InboxJob } from "@/lib/career-ops";
 import { Badge } from "@/components/ui/badge";
 import { CompanyLogo } from "@/components/company-logo";
@@ -16,6 +16,9 @@ import { companyPresentation, companySearchText } from "@/lib/company-presentati
 import { PipelineTableRowsSkeleton } from "@/components/page-loading-skeletons";
 import { startRouteProgress } from "@/components/route-progress";
 import { sortRows } from "@/lib/core/pipeline-sort.mjs";
+import { PageFrame } from "@/components/page-frame";
+import { pipelineQuery } from "@/lib/pipeline-navigation.mjs";
+import { postingHref, postingLabel } from "@/lib/posting-url.mjs";
 
 // INBOX (the triage queue) is the default tab; the rest filter the tracker.
 const TABS = [
@@ -70,6 +73,8 @@ export function PipelineView({
   // Search stays LOCAL for snappy typing; seeded from the URL and re-synced only
   // when the URL's q changes (i.e. the assistant set it) — never per keystroke.
   const [q, setQ] = useState(params.get("q") ?? "");
+  // Typing stays local, so include it explicitly when leaving the list.
+  const detailQuery = pipelineQuery(params.toString(), q);
   const lastUrlQ = useRef(params.get("q") ?? "");
   useEffect(() => {
     const urlQ = params.get("q") ?? "";
@@ -142,7 +147,7 @@ export function PipelineView({
   }, [visibleApplications, tab, q, sort, minFilter]);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8 max-sm:pb-24">
+    <PageFrame>
       <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl tracking-tight text-landing">Pipeline</h1>
@@ -213,11 +218,10 @@ export function PipelineView({
 
       {visibleTab === "INBOX" ? (
         /* ── Inbox: the triage surface (Abundance → Triage → Shortlist → Score) ── */
-        pendingInbox.length > 0 ? (
+        <>
           <InboxTriage inbox={pendingInbox} />
-        ) : (
-          <InboxEmpty count={0} filtered={false} />
-        )
+          {pendingInbox.length === 0 && <InboxEmpty count={0} filtered={false} />}
+        </>
       ) : isPending || filtered.length > 0 ? (
         /* ── Tracker table ──
            overflow-x-auto, not overflow-hidden: the rounded corners still clip,
@@ -255,21 +259,37 @@ export function PipelineView({
               {filtered.map((r) => {
                 const company = companyPresentation(r);
                 const key = applicationKey(r);
+                const detailHref = `/pipeline/${encodeURIComponent(r.n)}${detailQuery ? `?${detailQuery}` : ""}`;
+                const posting = postingHref(r.url);
                 return (
                   <tr key={key} data-application-key={key} className="group transition-colors hover:bg-surface/40">
                     <td className="whitespace-nowrap px-4 py-3 font-medium tabular-nums">
-                      <Link href={`/pipeline/${r.n}`} className="transition-colors group-hover:text-brand">
+                      <Link href={detailHref} className="transition-colors group-hover:text-brand">
                         #{r.n}
                       </Link>
                     </td>
                     <td className="px-4 py-3 font-medium">
-                      <Link href={`/pipeline/${r.n}`} className="flex items-center gap-2.5 transition-colors group-hover:text-brand">
+                      <Link href={detailHref} className="flex items-center gap-2.5 transition-colors group-hover:text-brand">
                         <CompanyLogo name={company.logoName} size={20} />
                         {company.label}
                       </Link>
                     </td>
                   <td className="px-4 py-3 text-muted">
-                    <Link href={`/pipeline/${r.n}`}>{r.role}</Link>
+                    <div className="flex items-center gap-2">
+                      <Link href={detailHref}>{r.role}</Link>
+                      {posting && (
+                        <a
+                          href={posting}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={posting}
+                          className="inline-flex shrink-0 items-center gap-1 text-xs text-brand hover:underline"
+                        >
+                          {postingLabel(posting)}
+                          <ExternalLink className="size-3" />
+                        </a>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <Badge tone={scoreTone(r.score)}>{r.score || "—"}</Badge>
@@ -313,7 +333,7 @@ export function PipelineView({
           <p className="mx-auto mt-1 max-w-sm text-sm text-muted">Try a different tab or clear the search.</p>
         </div>
       )}
-    </div>
+    </PageFrame>
   );
 }
 

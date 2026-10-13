@@ -177,7 +177,7 @@ const KNOWN_WITHOUT_HELP = new Set([
   'batch-evaluate-gemini.mjs', 'cv-templates.mjs', 'fetch-jd.mjs', 'followup-seed.mjs',
   'generate-cover-letter.mjs', 'generate-pdf.mjs', 'intake.mjs',
   'match-star.mjs', 'openrouter-runner.mjs', 'plugins.mjs',
-  'seed-fixture.mjs', 'tracker.mjs',
+  'seed-fixture.mjs',
   'validate-plugin-registry.mjs', 'validate-untrusted-content-coverage.mjs',
   // generate-latex.mjs and verify-portals.mjs were here and have since been
   // fixed upstream; the ratchet's other end caught that on the rebase and
@@ -201,10 +201,8 @@ const KNOWN_WITHOUT_HELP = new Set([
   // comparison if a file by that name existed.
   'batch/aggregate-tokens.mjs',
   'keyword-match.mjs',
-  'migrate-scan-runs.mjs',
   'plugins/h1b-sponsor/install-h1b-index.mjs',
   'plugins/h1b-sponsor/token.mjs',
-  'scripts/export-ats-text.mjs',
 
   // Not user-facing CLIs, so `--help` is not a question anyone asks them. They
   // carry the isMainModule guard because something else invokes them — a

@@ -81,7 +81,7 @@ const CV_PATH = join(getCareerOpsRoot(), 'cv.md');
 // a single `*`/`_` — leaves a literal bullet character untouched, since a
 // real bullet is one asterisk, not two.
 const REQUIREMENT_HEADER_RE = new RegExp(
-  '^#{0,6}\\s*(?:(?:' + [
+  '^#{0,6}\\s*\u3010?\\s*(?:(?:' + [
     'required', 'requirements', 'qualifications', 'must[- ]have', 'preferred', 'nice[- ]to[- ]have',
     // (?:'|’)?\s*re|\s+are (not just (?:'|’)?\s*re): the contracted-only form
     // matched "we're"/"we re" but not the equally common uncontracted "we are"
@@ -110,14 +110,24 @@ const REQUIREMENT_HEADER_RE = new RegExp(
     '\u61C9\u5FB5\u689D\u4EF6',   // 應徵條件
     '\u8CC7\u683C\u689D\u4EF6',   // 資格條件
     '\u8077\u52D9\u9700\u6C42',   // 職務需求
-    '\u689D\u4EF6\u8981\u6C42',   // 條件要求 (zh-CN)
-    '\u4EFB\u8077\u8CC7\u683C',   // 任職資格 (zh-CN)
+    '\u689D\u4EF6\u8981\u6C42',   // 條件要求
+    '\u4EFB\u8077\u8CC7\u683C',   // 任職資格
     '\u5FC5\u8981\u689D\u4EF6',   // 必要條件
-    '\u57FA\u672C\u8981\u6C42',   // 基本要求 (zh-CN)
-    '\u8077\u4F4D\u8981\u6C42',   // 職位要求 (zh-CN)
+    '\u57FA\u672C\u8981\u6C42',   // 基本要求 (same code points in zh-TW and zh-CN)
+    '\u8077\u4F4D\u8981\u6C42',   // 職位要求
+    // zh-CN (Simplified). The entries above use Traditional code points
+    // (職 U+8077, 資 U+8CC7, 條 U+689D, 項 U+9805), so a Simplified posting
+    // (职 U+804C, 资 U+8D44, 条 U+6761, 项 U+9879) never matched them.
+    '\u804C\u4F4D\u8981\u6C42',   // 职位要求
+    '\u5C97\u4F4D\u8981\u6C42',   // 岗位要求
+    '\u5C97\u4F4D\u57FA\u672C\u8981\u6C42', // 岗位基本要求
+    '\u4EFB\u804C\u8981\u6C42',   // 任职要求
+    '\u4EFB\u804C\u8D44\u683C',   // 任职资格
+    '\u6761\u4EF6\u8981\u6C42',   // 条件要求
     // preferred / nice-to-have
     '\u52A0\u5206\u9805\u76EE',   // 加分項目
     '\u52A0\u5206\u689D\u4EF6',   // 加分條件
+    '\u52A0\u5206\u9879',         // 加分项 (zh-CN)
   ].join('|') + ')).*$',
   'im'
 );
@@ -132,7 +142,7 @@ const REQUIREMENT_HEADER_RE = new RegExp(
 // is handled by stripBoldMarkers() before this pattern ever sees the line,
 // not by letting the prefix itself swallow `*`/`_` (#4273).
 const NON_REQUIREMENT_HEADER_RE = new RegExp(
-  '^#{0,6}\\s*(?:(?:' + [
+  '^#{0,6}\\s*\u3010?\\s*(?:(?:' + [
     // Responsibilities. The negative lookahead keeps "You will have" on the
     // requirements side — this list is tested BEFORE REQUIREMENT_HEADER_RE in
     // scanJd(), so without it a "You will have:" heading would close a block
@@ -160,6 +170,14 @@ const NON_REQUIREMENT_HEADER_RE = new RegExp(
     '\u95DC\u65BC\u6211\u5011',   // 關於我們
     '\u61C9\u5FB5\u65B9\u5F0F',   // 應徵方式
     '\u5982\u4F55\u61C9\u5FB5',   // 如何應徵
+    // zh-CN (Simplified) closing headers.
+    '\u5DE5\u4F5C\u5185\u5BB9',   // 工作内容
+    '\u5DE5\u4F5C\u804C\u8D23',   // 工作职责
+    '\u5C97\u4F4D\u804C\u8D23',   // 岗位职责
+    '\u804C\u4F4D\u63CF\u8FF0',   // 职位描述
+    '\u85AA\u8D44',               // 薪资
+    '\u516C\u53F8\u4ECB\u7ECD',   // 公司介绍
+    '\u5173\u4E8E\u6211\u4EEC',   // 关于我们
   ].join('|') + ')).*$',
   'im'
 );

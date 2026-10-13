@@ -1,8 +1,9 @@
 /**
  * submit-guard.mjs — the one definition of "this control submits the form",
- * shared by the two places in the agentic drive loop that have to agree on it
- * (`web/src/lib/apply/drive.ts`): the snapshot that decides which elements the
- * planner may address, and the action path that executes what it picked.
+ * shared by the two places in the agentic drive loop that have to agree on it:
+ * the snapshot that decides which elements the planner may address
+ * (`web/src/lib/apply/drive.ts`), and the action path that executes what it
+ * picked (`drive-action.mjs`).
  *
  * NEVER-SUBMIT is by construction for the planner's ACTION VOCABULARY
  * (`web/AGENTS.md`: "There is no exception, no flag"): there is no "submit"
@@ -28,7 +29,8 @@
  */
 
 /**
- * The facts both call sites decide on, read from the live DOM by `drive.ts`:
+ * The facts both call sites decide on, read from the live DOM by `factsOf`
+ * (`drive-action.mjs`):
  *
  * - `tag`          lowercase tag name
  * - `type`         the authored `type` attribute, lowercased ("" when absent).

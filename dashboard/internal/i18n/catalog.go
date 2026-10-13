@@ -794,37 +794,63 @@ var Es = Catalog{
 // Current points to the active language catalog. Defaults to English (&En).
 var Current = &En
 
+// languages is the single source of truth for which languages exist, in the
+// order ToggleLang cycles them. SetLang, GetLang and ToggleLang all read it, so
+// adding a language is one entry here rather than three separate edits that can
+// drift — which is how ToggleLang came to be unable to reach Spanish.
+//
+// Order matters twice: it is the cycle order, and SetLang matches by prefix in
+// this order. "en" before "es" is harmless since neither is a prefix of the
+// other, but a future code that is a prefix of another must come after it.
+var languages = []struct {
+	code    string
+	catalog *Catalog
+}{
+	{"en", &En},
+	{"tr", &Tr},
+	{"es", &Es},
+}
+
 // SetLang sets the active catalog based on language code prefix
 // (e.g., "tr", "tr_TR" -> &Tr; "es", "es_ES" -> &Es; anything else -> &En).
 func SetLang(lang string) {
 	l := strings.ToLower(strings.TrimSpace(lang))
-	switch {
-	case strings.HasPrefix(l, "tr"):
-		Current = &Tr
-	case strings.HasPrefix(l, "es"):
-		Current = &Es
-	default:
-		Current = &En
+	for _, entry := range languages {
+		if strings.HasPrefix(l, entry.code) {
+			Current = entry.catalog
+			return
+		}
 	}
+	Current = &En
 }
 
-// ToggleLang switches Current between &En and &Tr.
+// ToggleLang advances Current to the next language in `languages`, wrapping.
+//
+// It used to flip between &En and &Tr, with every other catalog falling into
+// the else branch and landing on English. Spanish was added after that was
+// written, so a user who started the dashboard in Spanish pressed the key the
+// help bar advertises as "lang" and could not get back — the toggle could only
+// ever reach English and Turkish. Cycling makes every supported language
+// reachable from every other one.
 func ToggleLang() {
-	if Current == &En {
-		Current = &Tr
-	} else {
-		Current = &En
+	for i, entry := range languages {
+		if Current == entry.catalog {
+			Current = languages[(i+1)%len(languages)].catalog
+			return
+		}
 	}
+	// Current points at a catalog outside the list: land somewhere defined
+	// rather than leaving it unchanged, so the key always does something.
+	Current = &En
 }
 
-// GetLang returns the active language code ("tr" if Current == &Tr, "es" if
-// Current == &Es, else "en").
+// GetLang returns the active language code, or "en" when Current points at a
+// catalog that is not in `languages`.
 func GetLang() string {
-	if Current == &Tr {
-		return "tr"
-	}
-	if Current == &Es {
-		return "es"
+	for _, entry := range languages {
+		if Current == entry.catalog {
+			return entry.code
+		}
 	}
 	return "en"
 }

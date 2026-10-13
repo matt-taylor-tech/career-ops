@@ -21,6 +21,7 @@ export type Job = {
   text: string;
   result?: JobResult;
   cost?: { tokens: number; usd?: number }; // per-run token cost (Claude result event) — local only
+  reportN?: number | null;
   startedAt: number;
   endedAt?: number;
 };
@@ -143,6 +144,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
         // verify-link reports a link status, not a 0–5 score: its result comes from
         // the backend's "verify" event rather than a VERDICT line.
         let verifyResult: JobResult | undefined;
+        let doneReportN: number | null = null;
         const finish = (status: "done" | "error", lastLabel?: string) => {
           const result = status === "done" ? verifyResult ?? parseVerdict(verdictLine || text) : undefined;
           const cost = status === "done" && doneTokens > 0 ? { tokens: doneTokens, usd: doneCostUsd ?? undefined } : undefined;
@@ -151,6 +153,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
             status,
             result,
             cost,
+            reportN: doneReportN,
             endedAt: Date.now(),
             steps: lastLabel ? [...j.steps, { kind: "status", label: lastLabel, ts: Date.now() }] : j.steps,
           }));
@@ -204,6 +207,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
           }
           doneTokens = completion.tokens ?? 0;
           doneCostUsd = completion.costUsd ?? null;
+          doneReportN = typeof completion.reportN === "number" ? completion.reportN : null;
           finish("done", "Done");
         } catch {
           finish("error", "Connection error");

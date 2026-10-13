@@ -111,6 +111,9 @@ export function jitteredDelayMs(baseMs) {
 //      also be matched against the IPv4 block list.
 // `0.0.0.0` and the all-zeros IPv6 `::` both reach loopback on Linux and need
 // explicit entries; the original list omitted them.
+//
+// IPv6 ULA is fc00::/7 (RFC 4193): both fc00::/8 and fd00::/8. IPv6
+// link-local is fe80::/10 (RFC 4291): fe80–febf, not only the fe80: prefix.
 const PRIVATE_HOST_PATTERNS = [
   /^localhost$/,
   /^localhost\.localdomain$/,
@@ -122,8 +125,8 @@ const PRIVATE_HOST_PATTERNS = [
   /^169\.254\./,
   /^::1$/,
   /^::$/,
-  /^fc[0-9a-f]{2}:/,
-  /^fe80:/,
+  /^f[cd][0-9a-f]{2}:/,
+  /^fe[89ab][0-9a-f]:/,
 ];
 
 // Lowercase, strip IPv6 brackets, strip FQDN trailing dot. The `hostname`
@@ -181,6 +184,10 @@ export function rejectPrivateOrInvalid(url) {
 }
 
 const dnsCache = new Map();
+// Hold failures for 30 s, the same TTL as providers/_dns-cache.mjs, so an outage
+// is not pinned for the whole process. Unlike that cache, this includes NXDOMAIN:
+// resolveViaDns turns all lookup failures into an empty answer.
+const DNS_NEGATIVE_TTL_MS = 30_000;
 
 // Real DNS: resolve4 + resolve6 + lookup, each tolerant of its own failure, so a
 // host that only answers on one of the three still yields an address list.
@@ -229,8 +236,9 @@ export function setHostResolver(resolver) {
 async function resolveDnsCached(hostname) {
   if (dnsCache.has(hostname)) {
     const cached = dnsCache.get(hostname);
-    if (cached instanceof Error) throw cached;
-    return cached;
+    if (Array.isArray(cached)) return cached;
+    if (Date.now() < cached.expiresAt) throw cached.error;
+    dnsCache.delete(hostname);
   }
   try {
     const addresses = await hostResolver(hostname);
@@ -246,10 +254,20 @@ async function resolveDnsCached(hostname) {
     dnsCache.set(hostname, addresses);
     return addresses;
   } catch (err) {
-    dnsCache.set(hostname, err);
+    if (!Array.isArray(dnsCache.get(hostname))) {
+      dnsCache.set(hostname, { error: err, expiresAt: Date.now() + DNS_NEGATIVE_TTL_MS });
+    }
     throw err;
   }
 }
+
+// What a DNS filter answers for a name it blocks: 0.0.0.0 and ::. That is
+// Pi-hole's default, and what AdGuard DNS and Control D answered for the
+// trackers they blocked on 2026-10-11; hosts-file blocklists map names to
+// 0.0.0.0 too. No site is published at either address, so an answer whose only
+// private addresses are these is the user's own filter at work, not a host
+// resolving into private space. The request is blocked all the same.
+const SINKHOLE_ADDRESSES = new Set(['0.0.0.0', '::']);
 
 // Second layer of the egress guard: `rejectPrivateOrInvalid` only sees the
 // literal host, so a public hostname that *resolves* to private space still
@@ -261,15 +279,20 @@ export async function validateUrlSecurity(urlString) {
   const hostname = url.hostname;
   const host = normalizeHost(hostname);
   const addresses = await resolveDnsCached(host);
+  // Every private address, not only the first: whether a DNS filter gave the
+  // answer depends on all of them.
+  const blocked = [];
   for (const ip of addresses) {
     const norm = normalizeHost(ip);
     const mapped = extractMappedIPv4(norm);
     const candidates = mapped ? [norm, mapped] : [norm];
-    for (const candidate of candidates) {
-      if (PRIVATE_HOST_PATTERNS.some((pattern) => pattern.test(candidate))) {
-        throw new Error(`Access denied: Egress guard blocked private target IP ${ip}`);
-      }
-    }
+    const hit = candidates.find((candidate) => PRIVATE_HOST_PATTERNS.some((pattern) => pattern.test(candidate)));
+    if (hit) blocked.push({ ip, hit });
+  }
+  if (blocked.length > 0) {
+    const denied = new Error(`Access denied: Egress guard blocked private target IP ${blocked[0].ip}`);
+    if (blocked.every(({ hit }) => SINKHOLE_ADDRESSES.has(hit))) denied.livenessCode = 'dns_sinkhole';
+    throw denied;
   }
 }
 
@@ -300,10 +323,26 @@ export async function installLivenessRouteGuard(page) {
         // opened by hand to confirm: 11,178 characters of live posting and a
         // working apply control, called uncertain because of a dead tracker.
         //
+        // A tracker the user's own DNS filter blocks says nothing about the
+        // posting either. validateUrlSecurity tags that answer `dns_sinkhole`.
+        // Measured 2026-10-11 over 35 postings on 19 boards, with Control D
+        // as the resolver: 20 read blocked_host because of Google Analytics,
+        // DoubleClick, Cloudflare Insights, LinkedIn's scripts and the like, and
+        // 11 of the 20 had a visible apply control. AdGuard DNS: 12 blocked_host.
+        //
         // The request is still aborted either way, so the egress guard loses
         // nothing. Only the VERDICT stops being poisoned, and only for a
-        // subresource: if the main document itself cannot resolve, that is a
+        // subresource: if the main document itself has no usable address, that is a
         // real finding about the posting and still counts.
+        //
+        // It counts as `uncertain` under its DNS tag, though, not as `blocked_host`.
+        // That code says the URL points into private space, and `scan --verify`
+        // records it as skipped_blocked_host, for good. No usable address can just
+        // as well be a DNS outage or the user's own filter, which say nothing lasting
+        // about the URL. The catch in checkUrlLiveness treats a DNS failure as
+        // transient for the same reason, and `--verify` keeps this verdict as it
+        // keeps a navigation_error.
+        //
         // Whether this was the main document or a subresource can only be asked
         // of a real Playwright request. Callers may pass a lighter route double
         // (the test suite does, with request() returning just a url()), and for
@@ -318,8 +357,11 @@ export async function installLivenessRouteGuard(page) {
         const isMainDocument = canTell
           ? request.isNavigationRequest() && request.frame() === page.mainFrame()
           : true;
-        if (err?.livenessCode !== 'dns_no_addresses' || isMainDocument) {
+        const noUsableAddress = err?.livenessCode === 'dns_no_addresses' || err?.livenessCode === 'dns_sinkhole';
+        if (!noUsableAddress) {
           page._blockedByGuard = { code: 'blocked_host', reason: err.message };
+        } else if (isMainDocument) {
+          page._blockedByGuard = { code: err.livenessCode, reason: err.message };
         }
         return route.abort('blockedbyclient');
       }

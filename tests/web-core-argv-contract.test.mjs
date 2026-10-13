@@ -127,6 +127,23 @@ const CALL_SITES = [
     probe: 'run',
   },
   {
+    source: 'web/src/app/api/upskill/route.ts',
+    script: 'upskill.mjs',
+    // No flags: upskill.mjs prints JSON by default and rejects a --json flag,
+    // the same convention stats.mjs and company-history.mjs follow while the
+    // follow-up routes pass one. The empty argv is the assertion.
+    args: [],
+    probe: 'run',
+  },
+  {
+    source: 'web/src/app/api/company-history/route.ts',
+    script: 'company-history.mjs',
+    // The fixture tracker's own company, so the probe exercises a real lookup
+    // rather than the not-found fallback.
+    args: ['--company', 'Northwind Robotics'],
+    probe: 'run',
+  },
+  {
     source: 'web/src/lib/core/pipeline.ts',
     script: null,
     args: [],

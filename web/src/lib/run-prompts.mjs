@@ -132,7 +132,7 @@ function safeCvTemplate(value) {
     : BASE_CV_TEMPLATE;
 }
 
-export function buildPrompt({ kind, input, memory, today, postedAt, lang, cvTemplate, verifyTarget }) {
+export function buildPrompt({ kind, input, memory, today, postedAt, lang, cvTemplate, verifyTarget, reportFile }) {
   // AGENTS.md's "Output Language vs Market Modes" composition rule. The CLI
   // picks this up by reading AGENTS.md interactively; a one-shot headless
   // prompt has no such chance, so the rule has to be stated in the prompt or a
@@ -214,7 +214,7 @@ Target: ${input}`;
     // backend (a plain Node process, no CLI sandbox) writes and renders it, so
     // pdf mode runs with no write tool at all.
     return `You are tailoring the user's ATS-optimized CV for application #${input}, headless, on their machine. Run the REAL career-ops "pdf" mode's CONTENT step: follow modes/pdf.md's TAILORING rules exactly (do not improvise your own scoring or format). Apply its CONTENT rules — keyword injection, ordering, the competency grid, project selection, and its never-invent-a-skill rule. Its steps that shell out (the jd-skill-gap.mjs check) and its build/save/render steps are NOT performed on web runs; the platform handles output itself.
-1. Read modes/pdf.md, cv.md, config/profile.yml, modes/_profile.md (if present: application tracks, outward-copy rules), modes/_custom.md (if present: the user's house rules, including any CV length budget; they override defaults), and the evaluation report at reports/${input}-*.md (for the JD keywords + analysis).
+1. Read modes/pdf.md, cv.md, config/profile.yml, modes/_profile.md (if present: application tracks, outward-copy rules), modes/_custom.md (if present: the user's house rules, including any CV length budget; they override defaults), and the evaluation report at ${JSON.stringify(reportFile ?? `reports/${input}-*.md`)} (for the JD keywords + analysis).
 2. Tailor the CV per modes/pdf.md: inject the JD's keywords into the summary + first bullets, reorder experience by relevance, build the competency grid, pick the top 3–4 projects. NEVER invent skills — only reword REAL experience using the JD's vocabulary. cv.md may be a long master: SELECT the most JD-relevant content so the rendered CV fits the page budget (2 pages unless modes/_custom.md says otherwise) — never reproduce the whole master.
 3. Fill ${safeCvTemplate(cvTemplate)}'s {{...}} placeholders with the tailored content. Use that exact file: the platform already resolved it from cv.template through cv-templates.mjs, so do NOT run modes/pdf.md's own template-resolution step. ${CV_ENVELOPE_INSTRUCTION}
 4. Emit the envelope EXACTLY ONCE. The platform writes the HTML, renders the PDF, and updates the tracker's PDF column itself, only after a confirmed successful render. Do not submit anything anywhere.
