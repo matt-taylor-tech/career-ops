@@ -70,7 +70,7 @@ import { workdayDedupKey, stripWorkdayRepostSuffix, isWorkdayJobUrl } from './pr
 import { normalizeCompany } from './tracker-utils.mjs';
 import { normalizeCompanyName } from './invite-match.mjs';
 import { withPipelineLock } from './pipeline-lock.mjs';
-import { compileKeyword, compilePositiveKeyword, compileContentKeyword, buildTitleFilter, foldAccents } from './title-keywords.mjs';
+import { compileKeyword, compilePositiveKeyword, compileContentKeyword, buildTitleFilter, foldTitle } from './title-keywords.mjs';
 import { flagValue, hasFlag, validateFlags } from './lib/cli-flags.mjs';
 import { withPortalHealthLock } from './portal-health-lock.mjs';
 import { localToday } from './lib/local-today.mjs';
@@ -334,7 +334,7 @@ function compiledPositiveMatchers(positiveList) {
   if (compiledPositiveCache.has(positiveList)) return compiledPositiveCache.get(positiveList);
   const compiled = positiveList
     .filter(k => typeof k === 'string' && k.trim().length > 0)
-    .map(k => ({ raw: k, match: compilePositiveKeyword(foldAccents(k.trim().toLowerCase())) }));
+    .map(k => ({ raw: k, match: compilePositiveKeyword(foldTitle(k).trim()) }));
   compiledPositiveCache.set(positiveList, compiled);
   return compiled;
 }
@@ -346,7 +346,7 @@ function compiledPositiveMatchers(positiveList) {
 // `by_title_keyword` key must be written exactly as the positive entry is.
 export function matchedTitleKeywords(title, titleFilter) {
   const raw = Array.isArray(titleFilter?.positive) ? titleFilter.positive : [];
-  const lower = foldAccents((title || '').toLowerCase());
+  const lower = foldTitle(title || '');
   return compiledPositiveMatchers(raw)
     .filter(({ match }) => match(lower))
     .map(({ raw: kw }) => kw);
@@ -2291,6 +2291,11 @@ function isRoleLocationSuffix(tag) {
   return false;
 }
 
+// "(m/w/d)", "(f/m/x)", "(H/F)", "(all genders)": the letter order differs by
+// board, and the tag never tells two roles apart. "h" (homme) only counts
+// next to "f": "(H/W)" is hardware, a discipline that does tell roles apart.
+const ROLE_GENDER_TAG_RE = /^(?:[mwfdx](?:\s*\/\s*(?:[mwfdx]|div|divers)){1,3}|(?:h\s*\/\s*f|f\s*\/\s*h)(?:\s*\/\s*[xd])?|all genders?)$/;
+
 /**
  * Normalize a role title for stable scan-time duplicate identity.
  *
@@ -2325,7 +2330,7 @@ export function normalizeRoleForDedup(role) {
   while (true) {
     // Bracketed: "Engineering Manager (Remote)", "… [US]".
     const bracketed = title.match(/\s*[\[(]([^[\]()]+)[\])]\s*$/);
-    if (bracketed && isRoleLocationSuffix(bracketed[1])) {
+    if (bracketed && (isRoleLocationSuffix(bracketed[1]) || ROLE_GENDER_TAG_RE.test(bracketed[1].trim()))) {
       title = title.slice(0, bracketed.index).trimEnd();
       continue;
     }

@@ -457,6 +457,14 @@ for (const [company, companyEntries] of groups) {
     let mergedNotes = String(keeper.notes || '').trim();
     const originalNotes = mergedNotes;
     for (let k = 1; k < cluster.length; k++) {
+      const dupReport = String(cluster[k].report || '').trim();
+      const dupReportNum = extractReportNum(dupReport);
+      if (dupReportNum !== null && dupReportNum !== extractReportNum(keeper.report)) {
+        const reportNote = `also evaluated in ${dupReport}`;
+        if (!mergedNotes.includes(dupReport)) {
+          mergedNotes = mergedNotes && mergedNotes !== 'N/A' && mergedNotes !== '-' ? `${mergedNotes}; ${reportNote}` : reportNote;
+        }
+      }
       const dupNotes = String(cluster[k].notes || '').trim();
       if (dupNotes && dupNotes !== 'N/A' && dupNotes !== '❌' && dupNotes !== 'pending' && dupNotes !== '-') {
         if (!mergedNotes.includes(dupNotes)) {

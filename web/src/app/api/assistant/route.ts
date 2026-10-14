@@ -12,6 +12,7 @@ import { fencingReport } from "@/lib/cli-fencing.mjs";
 // then auto-approves (#2185, #2507).
 const ADVISOR_SCOPE = scopeFrom("Read,WebFetch,Glob,Grep");
 import { readPersonalizationState } from "@/lib/personalization-file.mjs";
+import { readJsonObject } from "@/lib/json-body";
 
 /**
  * Human labels of the modes/_profile.md sections still identical to the template.
@@ -73,12 +74,8 @@ Keep replies short, warm, and useful. Don't dump raw files or narrate internal d
 type Msg = { role: "user" | "assistant"; content: string };
 
 export async function POST(req: Request) {
-  let body: { message?: string; cliId?: string; history?: Msg[]; pageContext?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return new Response(JSON.stringify({ error: "bad json" }), { status: 400 });
-  }
+  const body = await readJsonObject<{ message?: string; cliId?: string; history?: Msg[]; pageContext?: string }>(req);
+  if (!body) return new Response(JSON.stringify({ error: "bad json" }), { status: 400 });
   const { message, cliId: requestedCliId, pageContext } = body;
   if (!message || !requestedCliId) {
     return new Response(JSON.stringify({ error: "message and cliId required" }), { status: 400 });

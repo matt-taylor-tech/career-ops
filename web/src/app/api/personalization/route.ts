@@ -3,6 +3,7 @@ import { resolveCodeRoot } from "@/lib/core/code-root.mjs";
 import { atomicWriteWithBackup } from "@/lib/core/safe-write";
 import { coercePersonalization, SECTIONS } from "@/lib/personalization.mjs";
 import { readPersonalizationState, savePersonalization, UnsureProfileParseError } from "@/lib/personalization-file.mjs";
+import { readJsonObject } from "@/lib/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,12 +39,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  let body: Record<string, unknown>;
-  try {
-    body = (await req.json()) as Record<string, unknown>;
-  } catch {
-    return Response.json({ error: "bad json" }, { status: 400 });
-  }
+  const body = await readJsonObject<Record<string, unknown>>(req);
+  if (!body) return Response.json({ error: "bad json" }, { status: 400 });
   const patch = coercePersonalization(body) as Record<string, unknown>;
   if (Object.keys(patch).length === 0) return Response.json({ error: "nothing to write" }, { status: 400 });
 

@@ -81,7 +81,7 @@ test("progress uses cumulative funnel semantics, including hired and rejected", 
   assert.deepEqual(metrics.funnel.map((stage) => stage.label), ["Tracked", "Applied", "Responded", "Interview", "Offer"]);
   assert.equal(metrics.funnel[1].pct, 100);
   assert.equal(metrics.funnel[2].pct, (5 / 6) * 100);
-  assert.equal(metrics.activeApps, 5);
+  assert.equal(metrics.activeApps, 4);
   assert.equal(metrics.totalOffers, 2);
   assert.equal(metrics.responseRate, (5 / 6) * 100);
   assert.equal(metrics.interviewRate, (3 / 6) * 100);

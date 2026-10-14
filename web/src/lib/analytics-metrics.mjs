@@ -23,6 +23,10 @@ function normalizedStatus(value) {
   return canonStatus(String(value ?? ""));
 }
 
+// Same set as stats.mjs ACTIVE_STATUSES: applications in flight. Evaluated
+// rows were never sent and Hired is finished, so neither is active.
+const ACTIVE_STATUSES = new Set(["APPLIED", "RESPONDED", "ASSESSMENT", "INTERVIEW", "OFFER"]);
+
 function sortByCountThenLabel(a, b) {
   return b.count - a.count || a.label.localeCompare(b.label);
 }
@@ -50,7 +54,7 @@ export function computeProgressMetrics(applications = [], achievements) {
       topScore = Math.max(topScore, score);
     }
     if (status === "OFFER" || status === "HIRED") totalOffers += 1;
-    if (!["SKIP", "REJECTED", "DISCARDED"].includes(status)) activeApps += 1;
+    if (ACTIVE_STATUSES.has(status)) activeApps += 1;
   }
 
   const count = (status) => statusCounts.get(status) ?? 0;

@@ -21,18 +21,15 @@ import { resolveCvTemplate } from "@/lib/core/cv-template.mjs";
 import { acquireTrackerWrite, releaseTrackerWrite } from "@/lib/core/run-registry";
 import { createRunFinalizer } from "@/lib/run-finalizer.mjs";
 import { parseVerifyEnvelope, reportPostingUrl, reportTitleParts, verifyStatusLabel, writeVerification } from "@/lib/verify-link.mjs";
+import { readJsonObject } from "@/lib/json-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 800; // a real oferta evaluation / pdf-mode CV tailoring + render is heavy and multi-step
 
 export async function POST(req: Request) {
-  let body: { kind?: string; input?: string; cliId?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return new Response(JSON.stringify({ error: "bad json" }), { status: 400 });
-  }
+  const body = await readJsonObject<{ kind?: string; input?: string; cliId?: string }>(req);
+  if (!body) return new Response(JSON.stringify({ error: "bad json" }), { status: 400 });
   const { kind = "evaluate", input, cliId: requestedCliId } = body;
   if (!input || !requestedCliId) {
     return new Response(JSON.stringify({ error: "input and cliId required" }), { status: 400 });
