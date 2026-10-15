@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { careerOpsRoot, findApplication, isRegularContainedFile } from "@/lib/career-ops";
+import { careerOpsRoot, findApplication, isRegularContainedFile, pdfPathStatusForReport } from "@/lib/career-ops";
 import { companySlug } from "@/lib/company-slug.mjs";
 import { hasToken, matchesTailoredCover, sortNewestFirst } from "./cv-match.mjs";
+import { reportNumberFromCell } from "./cv-selection.mjs";
 
 /** The length generate-cover-letter.mjs truncates a role slug to when it builds
  *  a default output filename (`role.slice(0, 30)`). A role longer than this is
@@ -41,6 +42,15 @@ export async function resolveTailoredCover(company?: string, applicationNumber?:
   // it cannot join.
   const app = n ? findApplication(n) : null;
   if (n && !app) return null;
+
+  // The manifest has carried a kind column since #3959, so a cover rendered
+  // with --report is found exactly, wherever it lives under output/ (including
+  // a per-job folder whose filename names neither company nor role).
+  const reportNumber = app ? reportNumberFromCell(app.report) : null;
+  if (reportNumber) {
+    const indexed = await pdfPathStatusForReport(String(reportNumber), "cover");
+    if (indexed.status === "found") return indexed.path;
+  }
 
   const key = companySlug(app?.company ?? company);
   if (!key) return null;

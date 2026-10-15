@@ -7,7 +7,10 @@ import { inlineDisposition } from "./content-disposition.mjs";
 export type DocumentKind = "cv" | "cover" | "unknown";
 
 export interface DiscoveredDocument {
+  /** Path relative to output/: "file.pdf", or "Folder/file.pdf" for a per-job folder. */
   filename: string;
+  /** The per-job folder the PDF sits in, or null for a flat file in output/. */
+  folder: string | null;
   kind: DocumentKind;
   date: string | null;
   reportId: string | null;
@@ -53,9 +56,10 @@ export function discoverDocuments(opts: DiscoverOptions): DiscoveredDocument[] {
           const pdfAbs = path.normalize(path.resolve(workspaceRoot, row.pdf));
           const normOutput = path.resolve(outputDir);
 
-          // Reject manifest entries that resolve outside the intended output scope
-          // We only discover immediate children of outputDir, so exact dirname match is appropriate.
-          if (path.dirname(pdfAbs) === normOutput) {
+          // Reject manifest entries that resolve outside the intended output scope.
+          // Discovery covers output/ and one level of per-job folders below it.
+          const parent = path.dirname(pdfAbs);
+          if (parent === normOutput || path.dirname(parent) === normOutput) {
             manifestRows.push({
               pdfAbs,
               reportId: row.reportId,
@@ -77,8 +81,28 @@ export function discoverDocuments(opts: DiscoverOptions): DiscoveredDocument[] {
   const normOutput = path.resolve(outputDir);
 
 
-  for (const filename of entries) {
-    if (!filename.toLowerCase().endsWith(".pdf")) continue;
+  // Flat PDFs in output/, plus PDFs one level down in per-job folders
+  // ("output/{Company} - {Role}/cv_name.pdf"). Folders starting with "." or "_"
+  // (scratch, _misc) are skipped.
+  const candidates: string[] = [];
+  for (const entry of entries) {
+    if (entry.toLowerCase().endsWith(".pdf")) {
+      candidates.push(entry);
+      continue;
+    }
+    if (entry.startsWith(".") || entry.startsWith("_")) continue;
+    const sub = path.resolve(outputDir, entry);
+    try {
+      if (!fs.lstatSync(sub).isDirectory()) continue;
+      for (const child of fs.readdirSync(sub)) {
+        if (child.toLowerCase().endsWith(".pdf")) candidates.push(`${entry}/${child}`);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  for (const filename of candidates) {
 
     const absPath = path.resolve(outputDir, filename);
 
@@ -120,16 +144,17 @@ export function discoverDocuments(opts: DiscoverOptions): DiscoveredDocument[] {
 
     // Fallback classification if manifest is missing or didn't have a kind
     if (kind === "unknown") {
-      const name = filename.toLowerCase().replace(/\.pdf$/, "");
-      if (name.startsWith("cv-")) {
+      const name = path.basename(filename).toLowerCase().replace(/\.pdf$/, "");
+      if (name.startsWith("cv-") || name.startsWith("cv_")) {
         kind = "cv";
-      } else if (/^cover([-_]|$)/.test(name) || /[-_]cover$/.test(name)) {
+      } else if (/^cover([-_]|letter_|$)/.test(name) || /[-_]cover$/.test(name)) {
         kind = "cover";
       }
     }
 
     results.push({
       filename,
+      folder: filename.includes("/") ? filename.split("/")[0] : null,
       kind,
       date,
       reportId,
@@ -220,7 +245,7 @@ export async function handleDocumentsRequest(
         status: 200,
         headers: {
           "Content-Type": "application/pdf",
-          "Content-Disposition": inlineDisposition(doc.filename),
+          "Content-Disposition": inlineDisposition(path.basename(doc.filename)),
           "Cache-Control": "no-store",
         },
       });
@@ -234,6 +259,7 @@ export async function handleDocumentsRequest(
   const payload = documents.map((doc) => ({
     id: encodeId(doc.filename),
     filename: doc.filename,
+    folder: doc.folder,
     kind: doc.kind,
     date: doc.date,
     reportId: doc.reportId,

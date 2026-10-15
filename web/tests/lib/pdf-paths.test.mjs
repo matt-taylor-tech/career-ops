@@ -206,3 +206,32 @@ test("resolvePdfPaths: profile.yml present but candidate.full_name empty falls b
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("resolvePdfPaths: cv.per_job_folders puts the CV in output/{Company} - {Role}/", () => {
+  const root = makeRoot({ profileYaml: 'candidate:\n  full_name: "Jane Smith"\ncv:\n  per_job_folders: true\n' });
+  mkdirSync(join(root, "reports"), { recursive: true });
+  const report = join(root, "reports", "018-acme-2026-07-01.md");
+  writeFileSync(report, "# Evaluation: Acme: Corp — Systems Administrator\n");
+  try {
+    const result = resolvePdfPaths("018", "2026-07-26", root, () => report);
+    assert.equal(result.ok, true);
+    assert.equal(result.paths.finalPdf, join(root, "output", "Acme Corp - Systems Administrator", "cv_jane_smith.pdf"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("resolvePdfPaths: per-job folder owned by another report gets a (#NNN) suffix", () => {
+  const root = makeRoot({ profileYaml: 'candidate:\n  full_name: "Jane Smith"\ncv:\n  per_job_folders: true\n' });
+  mkdirSync(join(root, "reports"), { recursive: true });
+  mkdirSync(join(root, "data"), { recursive: true });
+  writeFileSync(join(root, "data", "pdf-index.tsv"), "# report\tpdf\n007\toutput/Acme - IT Manager/cv_jane_smith.pdf\n");
+  const report = join(root, "reports", "018-acme-2026-07-01.md");
+  writeFileSync(report, "# Evaluation: Acme — IT Manager\n");
+  try {
+    const result = resolvePdfPaths("018", "2026-07-26", root, () => report);
+    assert.equal(result.paths.finalPdf, join(root, "output", "Acme - IT Manager (#018)", "cv_jane_smith.pdf"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

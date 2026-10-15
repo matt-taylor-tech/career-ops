@@ -69,12 +69,18 @@ export function resolvePdfPaths(input, today, root, findReportFile) {
   const companyMatch = reportName.match(/^\d+-(.+)-\d{4}-\d{2}-\d{2}\.md$/);
   const companySlug = companyMatch ? companyMatch[1] : "company";
   let candidateSlug = "candidate";
+  let candidateName = "";
+  let perJobFolders = false;
   try {
     // js-yaml v4's load() uses the safe default schema (no arbitrary type
     // construction, unlike Python's PyYAML) — same pattern already used in
     // web/src/app/api/profile/route.ts and portals/route.ts.
     const profile = yaml.load(fs.readFileSync(path.join(root, "config", "profile.yml"), "utf8"));
-    if (profile?.candidate?.full_name) candidateSlug = slugify(profile.candidate.full_name);
+    if (profile?.candidate?.full_name) {
+      candidateName = String(profile.candidate.full_name);
+      candidateSlug = slugify(candidateName);
+    }
+    perJobFolders = profile?.cv?.per_job_folders === true;
   } catch (err) {
     // A missing profile.yml is expected (not every checkout has one yet) and
     // falls back silently. Anything else — a real YAML syntax error in the
@@ -92,7 +98,64 @@ export function resolvePdfPaths(input, today, root, findReportFile) {
       reportNum,
       reportFile: path.relative(root, reportFile).split(path.sep).join("/"),
       html: path.join(scratchDir, `cv-web-${reportNum}.html`),
-      finalPdf: path.join(root, "output", `cv-${candidateSlug}-${reportNum}-${companySlug}-${today}.pdf`),
+      finalPdf:
+        (perJobFolders && perJobFolderPdf(root, reportFile, reportNum, candidateName)) ||
+        path.join(root, "output", `cv-${candidateSlug}-${reportNum}-${companySlug}-${today}.pdf`),
     },
   };
+}
+
+/**
+ * Opt-in per-job folder layout (`cv.per_job_folders: true` in config/profile.yml):
+ * output/{Company} - {Role}/cv_{first_last}.pdf. Company and role come from the
+ * report's "# Evaluation: {Company} — {Role}" heading. When that folder already
+ * holds a PDF indexed to a DIFFERENT report (the same title applied to twice),
+ * " (#NNN)" is appended so an earlier submitted CV is never overwritten.
+ * Returns null when the heading can't be read, so the caller falls back to the
+ * flat default name.
+ *
+ * @param {string} root
+ * @param {string} reportFile
+ * @param {string} reportNum
+ * @param {string} candidateName
+ * @returns {string | null}
+ */
+export function perJobFolderPdf(root, reportFile, reportNum, candidateName) {
+  let heading = "";
+  try {
+    heading = fs.readFileSync(reportFile, "utf8").split(/\r?\n/, 1)[0] ?? "";
+  } catch {
+    return null;
+  }
+  const m = heading.match(/^#\s*Evaluation:\s*(.+?)\s+[—–]\s+(.+?)\s*$/);
+  if (!m) return null;
+  const clean = (/** @type {string} */ t) => t.replace(/[\/\\:*?"<>|]/g, "").replace(/\s+/g, " ").trim();
+  const company = clean(m[1]);
+  const role = clean(m[2]);
+  if (!company || !role) return null;
+  const nameSlug = candidateName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "candidate";
+  const outputDir = path.join(root, "output");
+  let folder = `${company} - ${role}`;
+  if (folderBelongsToOtherReport(root, folder, reportNum)) folder += ` (#${reportNum})`;
+  const dir = path.join(outputDir, folder);
+  // Containment: the cleaned name has no separators, but never trust that alone.
+  if (path.dirname(dir) !== outputDir) return null;
+  fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, `cv_${nameSlug}.pdf`);
+}
+
+/** True when data/pdf-index.tsv lists a PDF in output/{folder}/ for another report. */
+function folderBelongsToOtherReport(root, folder, reportNum) {
+  let tsv = "";
+  try {
+    tsv = fs.readFileSync(path.join(root, "data", "pdf-index.tsv"), "utf8");
+  } catch {
+    return false;
+  }
+  const prefix = `output/${folder}/`;
+  return tsv.split(/\r?\n/).some((line) => {
+    if (!line || line.startsWith("#")) return false;
+    const [rep, pdf] = line.split("\t");
+    return Boolean(pdf?.startsWith(prefix)) && /^\d+$/.test(rep ?? "") && Number(rep) !== Number(reportNum);
+  });
 }

@@ -253,7 +253,10 @@ export type PdfPathForReportResult =
  *  reader. The parsing itself is pdfIndexEntryForReport, a pure function
  *  shared with the apply flow's own CV resolver (cv-selection.mjs) so there
  *  is one definition of "which row matches this report", not two. */
-export async function pdfPathStatusForReport(n: string): Promise<PdfPathForReportResult> {
+export async function pdfPathStatusForReport(
+  n: string,
+  kind: "cv" | "cover" = "cv",
+): Promise<PdfPathForReportResult> {
   const target = pdfIndexTarget(n);
   if (target === null) return { status: "invalid" };
   const indexPath = await resolvePdfIndexPath();
@@ -265,7 +268,7 @@ export async function pdfPathStatusForReport(n: string): Promise<PdfPathForRepor
     return { status: "not-found" };
   }
   const root = careerOpsRoot();
-  const entry = pdfIndexEntryForReport(tsv, target);
+  const entry = pdfIndexEntryForReport(tsv, target, kind);
   if (!entry.found) return { status: "not-found" };
   if (!entry.path) return { status: "rejected" };
   // The manifest is a user-layer file (generate-pdf.mjs writes it, but nothing
