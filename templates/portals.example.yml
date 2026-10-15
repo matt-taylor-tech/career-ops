@@ -68,11 +68,12 @@
 # Regional variants count as one language (en-GB equals en), and a posting whose
 # language the ATS doesn't report is compared as before.
 #
-# Some ATSes (Personio) serve every language version of a posting under one URL.
-# With the switch off they return each posting once, in its own default
-# language; with it on they return every version, at one extra request per
-# further language. A `?language=xx` on such a careers_url asks for that
-# language instead of the default wherever a posting has it.
+# Some ATSes (Personio, Recruitee) serve every language version of a posting
+# under one URL. With the switch off they return each posting once, in its own
+# default language; with it on they return every version — Personio at one
+# extra request per further language, Recruitee from the response it already
+# fetches. A `?language=xx` on a Personio careers_url asks for that language
+# instead of the default wherever a posting has it.
 #
 # scan_history:
 #   dedup_include_language: true
@@ -1292,21 +1293,21 @@ search_queries:
 #   careers_url: https://careers.tencent.com/search.html  # any https://careers.tencent.com URL
 #   keywords: ["AI", "大模型"]   # each keyword is a separate server-side query, results deduped;
 #                                # omit keywords to pull the whole board
-#   max_pages: 20          # optional per-keyword page cap (100 posts/page, default 20)
+#   max_pages: 100         # optional per-keyword page cap (100 posts/page, default 100)
 #   enabled: true
 #
 # - name: 美团 (Meituan)
 #   careers_url: https://zhaopin.meituan.com/web/social   # any https://zhaopin.meituan.com URL
 #   keywords: ["AI", "大模型"]   # each keyword is a separate server-side query, results deduped;
 #                                # omit keywords to pull the whole board
-#   max_pages: 30          # optional per-keyword page cap (100 posts/page, default 30)
+#   max_pages: 100         # optional per-keyword page cap (100 posts/page, default 100)
 #   enabled: true
 #
 # - name: 阿里巴巴 (Alibaba)
 #   careers_url: https://talent.alibaba.com/off-campus/position-list   # any https://talent.alibaba.com URL
 #   keywords: ["AI", "大模型"]   # each keyword is a separate server-side query, results deduped;
 #                                # omit keywords to pull the whole board
-#   max_pages: 50          # optional per-keyword page cap (100 posts/page, default 50)
+#   max_pages: 100         # optional per-keyword page cap (100 posts/page, default 100)
 #   enabled: true
 #
 # - name: Example Feishu Jobs Co
@@ -1323,6 +1324,10 @@ search_queries:
 #
 # - name: Example Workable Co
 #   careers_url: https://apply.workable.com/exampleco   # any apply.workable.com/<slug> host
+#   enabled: true
+#
+# - name: Example Recruitee Co
+#   careers_url: https://exampleco.recruitee.com         # any *.recruitee.com host
 #   enabled: true
 #
 # - name: Example ADP Workforce Now Co
@@ -1733,6 +1738,17 @@ search_queries:
 #   appendWorkType: true  # optional: title becomes "Strategy Consultant [Part time]"
 #   enabled: true
 #
+# - name: Kalibrr — Indonesia            # SEA job board (Indonesia-heavy)
+#   provider: kalibrr
+#   searchKeywords: ""    # optional — the API's own `text` filter (whole board when empty)
+#   max_pages: 20         # optional page cap (100 rows/request, default 20, max 200)
+#   enabled: true
+#
+# - name: Tech in Asia                   # SEA startup-ecosystem board
+#   provider: techinasia
+#   max_pages: 5          # optional page cap (1000 rows/request, default 5, max 50)
+#   enabled: true
+#
 # - name: IBM — Germany SWE              # IBM global careers
 #   provider: ibm
 #   ibm:
@@ -2087,8 +2103,7 @@ tracked_companies:
     enabled: true
 
   - name: Temporal
-    careers_url: https://job-boards.greenhouse.io/temporal
-    api: https://boards-api.greenhouse.io/v1/boards/temporal/jobs
+    careers_url: https://jobs.ashbyhq.com/temporal
     notes: "Workflow orchestration."
     enabled: true
 
@@ -2099,8 +2114,7 @@ tracked_companies:
     enabled: true
 
   - name: RunPod
-    careers_url: https://job-boards.greenhouse.io/runpod
-    api: https://boards-api.greenhouse.io/v1/boards/runpod/jobs
+    careers_url: https://jobs.ashbyhq.com/runpod
     notes: "GPU cloud for AI."
     enabled: true
 
@@ -2123,7 +2137,7 @@ tracked_companies:
     scan_method: websearch
     scan_query: '"ada.cx" OR "ada" "AI" "Solutions" OR "Engineer" site:jobs.ashbyhq.com OR site:job-boards.greenhouse.io'
     notes: "Toronto + remote. AI customer service."
-    enabled: true
+    enabled: false
 
   - name: LivePerson
     careers_url: https://liveperson.com/company/careers
@@ -2204,7 +2218,7 @@ tracked_companies:
     scan_method: websearch
     scan_query: '"lindy.ai" "AI" "Forward Deployed" OR "Solutions" site:jobs.ashbyhq.com'
     notes: "AI agent management platform."
-    enabled: true
+    enabled: false
 
   - name: Cognigy
     careers_url: https://careers.cognigy.com
@@ -2310,7 +2324,7 @@ tracked_companies:
   - name: Sanctuary AI
     careers_url: https://jobs.lever.co/sanctuary
     notes: "Vancouver. Humanoid robotics and embodied AI."
-    enabled: true
+    enabled: false
 
   - name: Semios
     careers_url: https://apply.workable.com/semios/
@@ -2341,9 +2355,7 @@ tracked_companies:
     enabled: true
 
   - name: Tinybird
-    careers_url: https://jobs.ashbyhq.com/tinybird
-    scan_method: websearch
-    scan_query: 'site:tinybird.co/careers OR site:jobs.ashbyhq.com/tinybird'
+    careers_url: https://jobs.lever.co/tinybird
     notes: "Remote. Real-time data platform."
     enabled: true
 
@@ -2352,13 +2364,18 @@ tracked_companies:
     scan_method: websearch
     scan_query: 'site:clarity.ai/careers OR site:jobs.lever.co/clarity-ai'
     notes: "Madrid/Remote. Sustainability analytics with AI."
-    enabled: true
+    enabled: false
 
   - name: Travelperk
     careers_url: https://jobs.ashbyhq.com/perk
     scan_method: websearch
     scan_query: 'site:jobs.ashbyhq.com/perk'
     notes: "Barcelona. Business travel unicorn (rebranded Perk)."
+    enabled: true
+
+  - name: Channable
+    careers_url: https://channable.recruitee.com
+    notes: "Utrecht. Product feed management for e-commerce. Recruitee board."
     enabled: true
 
   # -- DACH & European AI ecosystem --
@@ -2384,8 +2401,7 @@ tracked_companies:
     enabled: true
 
   - name: Black Forest Labs
-    careers_url: https://job-boards.greenhouse.io/blackforestlabs
-    api: https://boards-api.greenhouse.io/v1/boards/blackforestlabs/jobs
+    careers_url: https://jobs.ashbyhq.com/black-forest-labs
     notes: "Freiburg DE / SF. FLUX image models, ex-Stable Diffusion team."
     enabled: true
 
@@ -2517,8 +2533,7 @@ tracked_companies:
   # -- UK & Ireland AI (EU-friendly hiring) --
 
   - name: Wayve
-    careers_url: https://job-boards.greenhouse.io/wayve
-    api: https://boards-api.greenhouse.io/v1/boards/wayve/jobs
+    careers_url: https://jobs.ashbyhq.com/wayve
     notes: "London UK. Embodied AI for self-driving, ML & robotics roles."
     enabled: true
 
@@ -2704,7 +2719,7 @@ tracked_companies:
     careers_url: https://job-boards.greenhouse.io/templafy
     api: https://boards-api.greenhouse.io/v1/boards/templafy/jobs
     notes: "Copenhagen DK. Document-generation / content-enablement platform."
-    enabled: true
+    enabled: false
 
   # -- Iberia AI --
 
@@ -2734,13 +2749,13 @@ tracked_companies:
     careers_url: https://job-boards.greenhouse.io/runwayml
     api: https://boards-api.greenhouse.io/v1/boards/runwayml/jobs
     notes: "Generative AI video and creative tooling platform."
-    enabled: true
+    enabled: false
 
   - name: Hightouch
     careers_url: https://job-boards.greenhouse.io/hightouch
     api: https://boards-api.greenhouse.io/v1/boards/hightouch/jobs
     notes: "Data activation platform with AI agents and solutions engineering roles."
-    enabled: true
+    enabled: false
 
   - name: WorkOS
     careers_url: https://jobs.ashbyhq.com/workos
@@ -3234,7 +3249,7 @@ job_boards:
     enabled: false
     notes: "Polish tech job board — newest public postings"
 
-  # -- Indonesia job boards (provider: jobstreet / glints) --
+  # -- Indonesia job boards (provider: jobstreet / glints / kalibrr / techinasia) --
 
   - name: Jobstreet Indonesia
     provider: jobstreet
@@ -3246,6 +3261,21 @@ job_boards:
     maxPages: 3
     enabled: false
     notes: "Indonesia's largest job board (SEEK group). Uses SEEK v5 JobSearch API — zero tokens."
+
+  - name: Kalibrr Indonesia
+    provider: kalibrr
+    api: https://www.kalibrr.com/kjs/job_board/search
+    searchKeywords: "engineer"        # optional: maps to the API's own `text` filter
+    pageSize: 100                     # optional (default 100; 500 is accepted)
+    max_pages: 20                     # optional (default 20); `count` in the response bounds the real total
+    enabled: false
+    notes: "SEA job board, Indonesia-heavy. Public no-auth job-board search JSON — zero tokens."
+
+  - name: Tech in Asia
+    provider: techinasia
+    max_pages: 5                      # optional (default 5; 1000 rows per page)
+    enabled: false
+    notes: "SEA startup-ecosystem job board (~300 live postings, mostly Indonesia). Reads the Algolia index the site's own UI queries; the app id + client key are discovered from the live bundle on every run, so nothing is hardcoded."
 
   - name: Glints Indonesia
     provider: glints

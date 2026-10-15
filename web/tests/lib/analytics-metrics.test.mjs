@@ -179,3 +179,10 @@ test("empty progress and Search stats metrics are stable", () => {
   assert.deepEqual(stats.archetypes, []);
   assert.equal(stats.pay.count, 0);
 });
+
+test("archetype IT operations bucket matches admin as a word", () => {
+  assert.equal(canonicalizeArchetype("Badminton Coach"), "Other / Cross-Functional");
+  assert.equal(canonicalizeArchetype("Sys Admin"), "IT & Technical Operations");
+  assert.equal(canonicalizeArchetype("Database Administrator"), "Data & Analytics");
+  assert.equal(canonicalizeArchetype("Systems Administrator"), "IT & Technical Operations");
+});

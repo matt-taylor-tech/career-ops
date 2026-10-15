@@ -3,6 +3,7 @@ import { extractForm, type ApplyField, type ExtractedForm } from "./extract";
 import { parseGreenhouse, fetchGreenhouseSchema } from "./greenhouse";
 import { statusBlock, dismissConsent, tryApplyTrigger, dropNewTabs, classifyEmpty, captchaWarning, multiStepInfo, verifyFill, type ApplyIssue } from "./diagnose";
 import { interpretFormWithAgent } from "./agent-interpret";
+import { pickComboboxOption } from "./option-match.mjs";
 import { resolveCli } from "../clis";
 import { fencingReport } from "../cli-fencing.mjs";
 import { CAPS } from "../worker-capabilities.mjs";
@@ -496,20 +497,16 @@ export async function fillSession(
           await s.page.keyboard.type(value);
         });
         await s.page.waitForTimeout(300);
-        const esc = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const menu = '.select__menu .select__option, .select__menu-list [role="option"], [class*="menu" i] [role="option"]';
-        const exact = s.frame.locator(menu).filter({ hasText: new RegExp(`^\\s*${esc}\\s*$`, "i") }).first();
-        if (await exact.count()) {
-          await exact.click();
+        const options = s.frame.locator(menu);
+        const pick = pickComboboxOption(await options.allInnerTexts(), value);
+        if (pick >= 0) {
+          await options.nth(pick).click();
         } else {
-          // fall back to the first option that contains the typed text; else give
-          // up (Escape closes the menu) — leave it for the human, never submit.
-          const partial = s.frame.locator(menu).filter({ hasText: new RegExp(esc, "i") }).first();
-          if (await partial.count()) await partial.click();
-          else {
-            await s.page.keyboard.press("Escape").catch(() => {});
-            gaveUp = true;
-          }
+          // No exact or single whole-word option: Escape closes the menu and the
+          // field is left for the person. Never Enter, never submit.
+          await s.page.keyboard.press("Escape").catch(() => {});
+          gaveUp = true;
         }
       } else if (meta.type === "select") {
         await loc.selectOption({ label: value }).catch(async () => {

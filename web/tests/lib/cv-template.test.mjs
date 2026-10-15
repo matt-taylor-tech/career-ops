@@ -96,20 +96,33 @@ function fakeCheckout({ profileAt = "config/profile.yml", template = "mine", pac
   return root;
 }
 
-/** Run `fn` as the dashboard does: cwd `<root>/web`, with this CAREER_OPS_PROFILE. */
+/**
+ * Run `fn` as the dashboard does: cwd `<root>/web`, with this CAREER_OPS_PROFILE.
+ *
+ * And with no data-root override. The default profile path follows the data
+ * root, so "the checkout's own config/profile.yml" is only the fake checkout's
+ * while nothing points the root elsewhere — and an inherited CAREER_OPS_ROOT
+ * does: the core suite pins one for every child it spawns, and a developer may
+ * export their own (#5113).
+ */
 async function asDashboard(root, profileEnv, fn) {
   const priorCwd = process.cwd();
-  const priorEnv = process.env.CAREER_OPS_PROFILE;
+  const priorEnv = {};
+  for (const name of ["CAREER_OPS_PROFILE", "CAREER_OPS_ROOT", "CAREER_OPS_DATA_DIR"]) {
+    priorEnv[name] = process.env[name];
+    delete process.env[name];
+  }
   fs.mkdirSync(path.join(root, "web"), { recursive: true });
   process.chdir(path.join(root, "web"));
-  if (profileEnv === undefined) delete process.env.CAREER_OPS_PROFILE;
-  else process.env.CAREER_OPS_PROFILE = profileEnv;
+  if (profileEnv !== undefined) process.env.CAREER_OPS_PROFILE = profileEnv;
   try {
     return await fn();
   } finally {
     process.chdir(priorCwd);
-    if (priorEnv === undefined) delete process.env.CAREER_OPS_PROFILE;
-    else process.env.CAREER_OPS_PROFILE = priorEnv;
+    for (const [name, value] of Object.entries(priorEnv)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
   }
 }
 

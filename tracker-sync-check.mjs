@@ -59,6 +59,7 @@ import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 
 import { resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
+import { findColumn } from './process-quality.mjs';
 import { roleFuzzyMatch } from './role-matcher.mjs';
 import { normalizeCompanyName, companySimilarity } from './invite-match.mjs';
 import { isMainModule } from './lib/is-main-module.mjs';
@@ -292,13 +293,6 @@ export function parseActiveInterviewsWithLines(content) {
 function loadActiveInterviewsWithLines(interviewsFile) {
   if (!existsSync(interviewsFile)) return [];
   return parseActiveInterviewsWithLines(readFileSync(interviewsFile, 'utf-8'));
-}
-
-// Case-insensitive column lookup — same rationale as process-quality.mjs's
-// findColumn: header wording ("Notes" vs "notes") is candidate-editable.
-function findColumn(row, name) {
-  const key = Object.keys(row || {}).find(k => k.trim().toLowerCase() === name);
-  return key ? String(row[key] ?? '') : '';
 }
 
 // --- git blame timestamp (Tier 2 tiebreak) ---

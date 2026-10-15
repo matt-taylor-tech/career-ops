@@ -78,7 +78,7 @@ import { printScanSummaryHeader } from './lib/scan-summary-marker.mjs';
 import { isMainModule } from './lib/is-main-module.mjs';
 import { SCAN_HISTORY_COLUMNS, parseScanHistoryLine } from './lib/scan-history-columns.mjs';
 import { escapeFormulaCell } from './lib/tsv-formula-escape.mjs';
-import { promoteKnownFragmentIdentity } from './url-key.mjs';
+import { promoteKnownFragmentIdentity, LANGUAGE_PARAMS, languageSubtag } from './url-key.mjs';
 import { getCareerOpsRoot } from './path-resolver.mjs';
 import { checkLivenessViaApi } from './liveness-api.mjs';
 
@@ -492,7 +492,18 @@ const USPS_STATES = Object.freeze([
 function compileUsStateAbbrev(abbr) {
   const escaped = abbr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re = new RegExp(`(?:,\\s*${escaped}(?![\\p{L}\\p{M}\\p{N}])|(?:^|[^\\p{L}\\p{M}\\p{N}])${escaped}[^\\p{L}\\p{M}\\p{N}]*$)`, 'u');
-  return (lower) => re.test(lower);
+  return (lower) => re.test(withoutCountryCodeSlot(lower));
+}
+
+// "City, Region, CC" ends in an ISO country code, and several of those are
+// also USPS codes: "Bengaluru, Karnataka, IN" read as Indiana and "Toronto,
+// ON, CA" as California, so always_allow beat the user's own block entry.
+// A two-letter last part after two or more parts is the country slot, never
+// a state. "Austin, TX, US" still keeps TX.
+function withoutCountryCodeSlot(lower) {
+  const parts = lower.split(',');
+  if (parts.length < 3 || !/^\s*\p{L}{2}\s*$/u.test(parts.at(-1))) return lower;
+  return parts.slice(0, -1).join(',');
 }
 
 const US_STATE_ALWAYS_ALLOW_MATCHERS = USPS_STATES.flatMap(([name, abbr]) => [
@@ -1594,17 +1605,14 @@ export function resolveDedupIncludeLanguage(config = {}) {
   return config.scan_history?.dedup_include_language === true;
 }
 
-// Query params naming the language a page renders in. Stripped from the dedup
-// key like the rest of DEDUP_STRIP_PARAMS, and read back by
-// languageFormsFromUrl to tell a posting's language versions apart.
-const URL_LANGUAGE_PARAMS = ['language', 'lang', 'locale'];
-
 // Query params that carry no identity information for a job posting — safe to
 // strip when computing the dedup key. Deliberately an allowlist rather than
 // "strip everything": several ATSes key the posting off a query param (e.g.
 // Greenhouse's `gh_jid`), so a blanket strip would collapse distinct roles.
 const DEDUP_STRIP_PARAMS = new Set([
-  ...URL_LANGUAGE_PARAMS,
+  // The language a page renders in: the language versions of one posting
+  // share a key, and languageFormsFromUrl reads the param back to tell them apart.
+  ...LANGUAGE_PARAMS,
   'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
   'ref', 'src', 'source', 'gh_src', 'lever-origin', 'lever-source',
   'rltr', // StepStone: regenerated per request, so one posting returns as new every scan
@@ -1677,7 +1685,7 @@ export function languageFormsFromUrl(url) {
     return [];
   }
   for (const [name, value] of parsed.searchParams) {
-    if (URL_LANGUAGE_PARAMS.includes(name.toLowerCase())) return languageFormsForDedup(value);
+    if (LANGUAGE_PARAMS.includes(name.toLowerCase())) return languageFormsForDedup(value);
   }
   return [];
 }
@@ -2584,31 +2592,16 @@ export function isDistinctRequisition(seededRequisitions, candidateRequisitions)
 }
 
 /**
- * The posting language as dedup forms, or none when the source did not say.
- *
- * A value that parses as a language tag (`_` read as `-`) is reduced by
- * `Intl.Locale` to its canonical language subtag: the region and script go
- * (`en-GB`, `en_GLOBAL`, `zh-Hant-TW` → `en`, `en`, `zh`) — regional variants of
- * one language are the same text for any reader — and legacy or three-letter
- * codes map to the current two-letter one (`deu` → `de`, `iw` → `he`). Anything
- * that doesn't parse, such as `English (US)`, is compared whole, case-folded; a
- * name like `German` parses as a (non-standard) tag and comes back lowercased.
- * The two postings being compared come from one employer, and almost always
- * one provider, so the value only has to be consistent within a source, not
- * standard across sources.
+ * The posting language as dedup forms, or none when the source did not say:
+ * the one form languageSubtag (url-key.mjs) reduces it to, shared with the
+ * tracker's URL comparison.
  *
  * @param {unknown} language - `Job.language`, or a scan-history `language` cell.
  * @returns {string[]} Zero or one form.
  */
 export function languageFormsForDedup(language) {
-  if (typeof language !== 'string') return [];
-  const value = language.trim();
-  if (!value) return [];
-  try {
-    return [new Intl.Locale(value.replace(/_/g, '-')).language];
-  } catch {
-    return [value.toLowerCase()];
-  }
+  const form = languageSubtag(language);
+  return form ? [form] : [];
 }
 
 /**

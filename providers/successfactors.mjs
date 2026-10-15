@@ -253,7 +253,7 @@ export function parseCsbDate(raw, locale) {
   if (y < 100) y += 2000;
   if (m < 1 || m > 12 || d < 1 || d > 31) return undefined;
   const ms = Date.UTC(y, m - 1, d);
-  return Number.isFinite(ms) ? ms : undefined;
+  return new Date(ms).getUTCDate() === d ? ms : undefined;
 }
 
 // jobLocationShort is an array of strings like "Karlovy Vary, CZE, 36004<br/>"

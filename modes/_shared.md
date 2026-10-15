@@ -90,7 +90,7 @@ Decide the Global Score once from these dimensions, applying any user-specific S
 **Score interpretation:**
 - 4.5+ → Strong match, recommend applying immediately
 - 4.0-4.4 → Good match, worth applying
-- 3.5-3.9 → Decent but not ideal, apply only if specific reason
+- 3.5-3.9 → Decent but not ideal. Recommend against applying unless the user names a specific reason (Ethical Use in AGENTS.md draws the line at 4.0)
 - Below 3.5 → Recommend against applying (see Ethical Use in AGENTS.md)
 
 ### Evidence confidence for the Global Score

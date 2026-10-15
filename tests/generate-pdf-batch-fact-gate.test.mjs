@@ -15,9 +15,11 @@
 import { spawnSync } from 'child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { pass, fail, rmSync, linkRepoPackage, ROOT, NODE } from './helpers.mjs';
+import { pass, fail, rmSync, linkRepoPackage, ROOT, NODE, SANDBOX_DATA_ROOT } from './helpers.mjs';
 
-const outputRoot = join(ROOT, 'output');
+// Under the suite's own data root, not the checkout's output/: that directory
+// is the developer's, and an interrupted run left this fixture in it (#5113).
+const outputRoot = join(SANDBOX_DATA_ROOT, 'output');
 mkdirSync(outputRoot, { recursive: true });
 // realpathSync for the reason generate-pdf-batch.test.mjs documents (#3165):
 // the main-module guard compares realpaths.

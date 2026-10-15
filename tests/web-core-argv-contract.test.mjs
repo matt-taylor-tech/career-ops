@@ -83,7 +83,7 @@ const CALL_SITES = [
     source: 'web/src/lib/core/scan.ts',
     script: 'scan-ats-full.mjs',
     // The values are the route's own defaults; only the flag names matter here.
-    args: ['--dry-run', '--since', '7', '--ats', 'greenhouse', '--limit', '150', '--json'],
+    args: ['--dry-run', '--since', '7', '--ats', 'greenhouse', '--limit', '150', '--shuffle', '--json'],
     probe: 'flags-only',
   },
   {

@@ -1,4 +1,7 @@
-import { readApplications, readInbox, doctorState } from "@/lib/career-ops";
+import { readApplications, readInbox, readReport, doctorState } from "@/lib/career-ops";
+import { pickAwaitingDecision } from "@/lib/home/awaiting.mjs";
+import { cardReason } from "@/lib/machine-summary.mjs";
+import type { CardReason } from "@/lib/machine-summary.mjs";
 import { todaySnapshot } from "@/lib/home/today-snapshot.mjs";
 import { scoreNum } from "@/lib/format";
 import { OnboardingBanner } from "@/components/onboarding-banner";
@@ -16,6 +19,11 @@ export default function Home() {
   if (phase === "first-run") return <FirstRunHome />;
 
   const { inbox, applications } = todaySnapshot(snapshot, scoreNum);
+  const reasons: Record<string, CardReason> = {};
+  for (const app of pickAwaitingDecision(applications, scoreNum)) {
+    const reason = cardReason(readReport(app.n)?.content ?? "");
+    if (reason) reasons[app.n] = reason;
+  }
   // Established / in-between: the dual-loop retention dashboard. Show the setup
   // banner whenever ANY prereq is missing (mirrors the core doctor.mjs), so a
   // portals-missing user is nudged rather than told "all caught up".
@@ -27,7 +35,7 @@ export default function Home() {
       <div className="mx-auto max-w-5xl px-6 pt-6">
         <OnboardingProgress />
       </div>
-      <TodayDashboard applications={applications} inbox={inbox} inBetween={phase === "in-between"} />
+      <TodayDashboard applications={applications} reasons={reasons} inbox={inbox} inBetween={phase === "in-between"} />
     </>
   );
 }

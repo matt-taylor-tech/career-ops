@@ -18,6 +18,7 @@ import { startRouteProgress } from "@/components/route-progress";
 import { sortRows } from "@/lib/core/pipeline-sort.mjs";
 import { PageFrame } from "@/components/page-frame";
 import { pipelineQuery } from "@/lib/pipeline-navigation.mjs";
+import { COMPARE_MAX } from "@/lib/pipeline-compare.mjs";
 import { postingHref, postingLabel } from "@/lib/posting-url.mjs";
 
 // INBOX (the triage queue) is the default tab; the rest filter the tracker.
@@ -270,6 +271,14 @@ export function PipelineView({
           >
             {bulkBusy ? "Saving…" : "Apply"}
           </button>
+          {selectedRows.length >= 2 && selectedRows.length <= COMPARE_MAX && (
+            <Link
+              href={`/pipeline/compare?n=${selectedRows.map((r) => r.n).join(",")}`}
+              className="rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground hover:border-brand/40 hover:text-brand"
+            >
+              Compare
+            </Link>
+          )}
           <button type="button" onClick={() => setSelected(new Set())} className="text-xs text-muted hover:text-foreground">
             Clear
           </button>

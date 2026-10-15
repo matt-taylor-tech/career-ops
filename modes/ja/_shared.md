@@ -60,7 +60,7 @@
 **Score interpretation:**
 - 4.5+ → 強いマッチ、今すぐ応募を推奨
 - 4.0-4.4 → 良好なマッチ、応募する価値あり
-- 3.5-3.9 → まずまずだが理想ではない、特別な理由がある場合のみ応募
+- 3.5-3.9 → まずまずだが理想ではない、ユーザーが具体的な理由を示さない限り応募しないよう勧める（AGENTS.md の Ethical Use は 4.0 を基準とする）
 - Below 3.5 → 応募非推奨（AGENTS.md の Ethical Use を参照）
 
 ## Posting Legitimacy (Block G)

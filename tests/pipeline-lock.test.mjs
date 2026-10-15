@@ -22,7 +22,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readFileSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { Worker } from 'node:worker_threads';
 import {
   acquirePipelineLock, LockTimeoutError, OWNERLESS_GRACE_MS,
   lockRecoveryVerdict, RECOVER_STALE, RECOVER_VANISHED, RECOVER_LIVE,
@@ -54,6 +55,60 @@ function churnLock(lockDir, everyMs) {
     handoffs: () => handoffs,
     stop() {
       clearInterval(timer);
+      rmSync(lockDir, { recursive: true, force: true });
+    },
+  };
+}
+
+// churnLock's handoffs, made on a worker thread's own event loop. A test whose
+// subject is the extension rule needs a holder that keeps making progress even
+// when the main thread stalls. The in-process timer above cannot promise that:
+// a stall keeps it from firing between the two fingerprint samples the wait
+// policy compares, the lock then reads as wedged, and the caller gives up early.
+// Real holders are other processes, so this is the closer model.
+//
+// The directory is created once and never removed. Each handoff swaps in a new
+// owner.json by rename, retried through Windows contention. A rename is atomic,
+// so the waiter never sees a free lock.
+// A remove-then-create swap would leave a gap another thread can slip through.
+// Resolves once the first owner is on disk; stop() is async because it ends the
+// worker.
+async function churnLockInWorker(lockDir, everyMs) {
+  const worker = new Worker(`
+    const { mkdirSync, writeFileSync } = require('node:fs');
+    const { join } = require('node:path');
+    const { workerData, parentPort } = require('node:worker_threads');
+    (async () => {
+      const { renameSyncWithRetry } = await import(workerData.trackerUtilsUrl);
+      const owner = join(workerData.lockDir, 'owner.json');
+      const staged = join(workerData.lockDir, 'owner.json.next');
+      let handoffs = 0;
+      const stamp = () => JSON.stringify({
+        pid: process.pid, token: 'handoff-' + handoffs++, started_at: new Date().toISOString(),
+      });
+      mkdirSync(workerData.lockDir, { recursive: true });
+      writeFileSync(owner, stamp(), 'utf-8');
+      parentPort.postMessage('ready');
+      setInterval(() => {
+        writeFileSync(staged, stamp(), 'utf-8');
+        renameSyncWithRetry(staged, owner);
+      }, workerData.everyMs);
+    })();
+  `, {
+    eval: true,
+    workerData: {
+      lockDir,
+      everyMs,
+      trackerUtilsUrl: pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), '..', 'tracker-utils.mjs')).href,
+    },
+  });
+  await new Promise((resolve, reject) => {
+    worker.once('message', resolve);
+    worker.once('error', reject);
+  });
+  return {
+    async stop() {
+      await worker.terminate();
       rmSync(lockDir, { recursive: true, force: true });
     },
   };
@@ -433,7 +488,7 @@ test('acquirePipelineLock: a lock that keeps changing hands does not time out a 
 
 test('acquirePipelineLock: extended waiting is still bounded by maxWaitMs, so endless churn cannot hang a caller', async () => {
   const root = fixtureRoot();
-  const churn = churnLock(`${root}/data/pipeline.md.lock`, 30);
+  const churn = await churnLockInWorker(`${root}/data/pipeline.md.lock`, 30);
   try {
     const p = join(root, 'data', 'pipeline.md');
     // Progress must buy patience, never immortality: a lock handed round for
@@ -447,7 +502,7 @@ test('acquirePipelineLock: extended waiting is still bounded by maxWaitMs, so en
     assert.ok(elapsed >= 400, `gave up after ${elapsed}ms, before the caller's maxWaitMs`);
     assert.ok(elapsed < 3000, `waited ${elapsed}ms — maxWaitMs did not bound the extension`);
   } finally {
-    churn.stop();
+    await churn.stop();
     rmSync(root, { recursive: true, force: true });
   }
 });

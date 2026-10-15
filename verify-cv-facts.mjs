@@ -172,6 +172,9 @@ const METRIC_NOUNS = [
   'projekten', 'standorte', 'standorten', 'zertifikate', 'zertifikaten',
   'blogbeiträge', 'blogbeiträgen', 'beiträge', 'beiträgen', 'posts',
   'werkzeuge', 'werkzeugen',
+  'mitarbeitern', 'mitarbeiterinnen', 'teammitglieder', 'teammitgliedern',
+  'nutzer', 'nutzern', 'entwickler', 'entwicklern', 'entwicklerinnen',
+  'ingenieure', 'ingenieuren', 'ingenieurinnen',
 ];
 // How many words may sit between a number and the noun it counts. The same
 // regex parses the generated CV and the sources, so the window is symmetric by
@@ -270,9 +273,21 @@ const NOUN_SYNONYMS = new Map([
   ['labs', 'laboratories'],
   // German forms fold to the English canonical noun (see METRIC_NOUNS).
   ['mitarbeiter', 'employees'],
+  ['mitarbeitern', 'employees'],
+  ['mitarbeiterinnen', 'employees'],
   ['mitarbeitende', 'employees'],
   ['mitarbeitenden', 'employees'],
+  ['teammitglieder', 'employees'],
+  ['teammitgliedern', 'employees'],
   ['kunden', 'customers'],
+  ['nutzer', 'users'],
+  ['nutzern', 'users'],
+  ['entwickler', 'engineers'],
+  ['entwicklern', 'engineers'],
+  ['entwicklerinnen', 'engineers'],
+  ['ingenieure', 'engineers'],
+  ['ingenieuren', 'engineers'],
+  ['ingenieurinnen', 'engineers'],
   ['projekte', 'projects'],
   ['projekten', 'projects'],
   ['standorte', 'locations'],

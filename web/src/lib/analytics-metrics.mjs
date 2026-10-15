@@ -145,7 +145,7 @@ export function canonicalizeArchetype(raw) {
   if (value.includes("transformation") || value.includes("strategy") || value.includes("consultant") || value.includes("governance") || value.includes("policy")) return "AI Transformation & Governance";
   if (value.includes("product") || value.includes("project") || value.includes("program") || value.includes("pm") || value.includes("projektkoordin")) return "Product & Program Mgmt";
   if (value.includes("data") || value.includes("analytics") || value.includes("business intelligence")) return "Data & Analytics";
-  if (value.includes("support") || value.includes("helpdesk") || value.includes("service desk") || value.includes("customer service") || value.includes("onboarding") || value.includes("administrator") || value.includes("operations") || value.includes("admin")) return "IT & Technical Operations";
+  if (value.includes("support") || value.includes("helpdesk") || value.includes("service desk") || value.includes("customer service") || value.includes("onboarding") || value.includes("administrator") || value.includes("operations") || /\badmin\b/.test(value)) return "IT & Technical Operations";
   if (value.includes("research") || value.includes("wissenschaft") || value.includes("universit") || value.includes("bildung")) return "Research & Academia";
   return "Other / Cross-Functional";
 }

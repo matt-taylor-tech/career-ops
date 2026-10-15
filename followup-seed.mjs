@@ -69,12 +69,13 @@ import {
   isMkdirContention, isRmContention, rmLockArtifactSync, createLockWaitPolicy,
   sameLockDirectory, lockRecoveryVerdict, RECOVER_STALE,
 } from './pipeline-lock.mjs';
-import { renameSyncWithRetry } from './tracker-utils.mjs';
+import { makeCliFailWith, renameSyncWithRetry } from './tracker-utils.mjs';
 import { tmpdir } from 'os';
 import { resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
 import { localToday } from './lib/local-today.mjs';
 import {
   resolveCadenceConfig,
+  loadFollowupsEnabled,
   normalizeStatus,
   parseAppliedDate,
   parseFollowups,
@@ -82,6 +83,7 @@ import {
   parseDate,
   addDays,
 } from './followup-cadence.mjs';
+import { flagValue } from './lib/cli-flags.mjs';
 import { getCareerOpsRoot, canonicalizeTrackerPath, resolveTrackerPath as sharedResolveTrackerPath } from './path-resolver.mjs';
 import { isMainModule } from './lib/is-main-module.mjs';
 
@@ -168,10 +170,13 @@ export function isValidCalendarDate(str) {
  *
  * @param {{num?: number, notes?: string, date?: string}} row - Parsed tracker row.
  * @param {string|null|undefined} explicitDate - `--date` value, already validated.
- * @returns {{appliedDate: string, appDateSource: 'explicit'|'notes'|'evaluation-date'|'today'}}
+ * @param {string|null|undefined} [statusChangeDate] - The day a caller moved the row
+ *   to Applied. It ranks below the notes date, which the user wrote on purpose, and
+ *   above the evaluation-date column, which is only a proxy.
+ * @returns {{appliedDate: string, appDateSource: 'explicit'|'notes'|'status-change'|'evaluation-date'|'today'}}
  * @throws {SeedError} INVALID_DATE when the notes carry an impossible date.
  */
-export function resolveAppliedDate(row, explicitDate) {
+export function resolveAppliedDate(row, explicitDate, statusChangeDate) {
   if (explicitDate) return { appliedDate: explicitDate, appDateSource: 'explicit' };
   const notesDate = parseAppliedDate(row?.notes);
   if (notesDate) {
@@ -180,6 +185,7 @@ export function resolveAppliedDate(row, explicitDate) {
     }
     return { appliedDate: notesDate, appDateSource: 'notes' };
   }
+  if (statusChangeDate) return { appliedDate: statusChangeDate, appDateSource: 'status-change' };
   // Only a usable calendar date qualifies: a blank or malformed `date` cell
   // must not become a pin with a "null" next-date, which is the same failure
   // the notes branch throws over.
@@ -460,6 +466,7 @@ function appendPins(existingContent, pinLines) {
  * @param {number} appNum
  * @param {object} [options]
  * @param {string} [options.date] - Explicit apply date (YYYY-MM-DD), already validated.
+ * @param {string} [options.statusChangeDate] - The day the row moved to Applied, see resolveAppliedDate.
  * @param {boolean} [options.force] - Bypass idempotency guard and the Applied-status guard.
  * @param {boolean} [options.assumeApplied] - Relax the Applied-status guard ONLY, keeping
  *   idempotency intact. For a caller that is about to make the row Applied and wants a
@@ -539,6 +546,10 @@ export async function seedFollowup(appNum, options = {}) {
     throw new SeedError('INVALID_DATE', `--date must be a real calendar date in YYYY-MM-DD form: ${options.date}`);
   }
 
+  if (!loadFollowupsEnabled(options.profilePath)) {
+    return { seeded: false, appNum, pin: null, nextDate: null, reason: 'disabled', ...(options.dryRun ? { dryRun: true } : {}) };
+  }
+
   const trackerPath = resolveTrackerPath(options.trackerPath);
   const followupsPath = resolveFollowupsPath(options.followupsPath);
 
@@ -559,7 +570,7 @@ export async function seedFollowup(appNum, options = {}) {
   // appDateSource travels with the result so a caller can tell a measured apply
   // date from a proxy or a guess — the same contract followup-cadence.mjs and
   // company-history.mjs already expose.
-  const { appliedDate, appDateSource } = resolveAppliedDate(row, options.date);
+  const { appliedDate, appDateSource } = resolveAppliedDate(row, options.date, options.statusChangeDate);
   const cadence = resolveCadenceConfig({ profilePath: options.profilePath });
   const nextDate = addDays(parseDate(appliedDate), cadence.applied_first);
   const setDate = todayStr();
@@ -605,6 +616,7 @@ export async function seedFollowup(appNum, options = {}) {
  * @returns {Promise<{seeded: object[], skipped: object[]}>}
  */
 export async function seedBackfill(options = {}) {
+  if (!loadFollowupsEnabled(options.profilePath)) return { seeded: [], skipped: [], reason: 'disabled' };
   const trackerPath = resolveTrackerPath(options.trackerPath);
   const followupsPath = resolveFollowupsPath(options.followupsPath);
 
@@ -689,15 +701,29 @@ export async function seedBackfill(options = {}) {
 
 // --- CLI ---------------------------------------------------------------
 
+const USAGE = `Usage:
+  node followup-seed.mjs <appNum> [--date YYYY-MM-DD] [--force] [--dry-run] [--json]
+  node followup-seed.mjs --backfill [--force] [--dry-run] [--json]
+
+  --date <YYYY-MM-DD>  override applied date (single-app only)
+  --backfill           seed all Applied rows lacking pins/logs
+  --force              re-seed even if already pinned/logged
+  --dry-run            compute without writing follow-ups.md
+  --json               machine-readable JSON output
+  --help, -h           print this and exit`;
+
 function parseCliArgs(argv) {
-  const opts = { force: false, dryRun: false, json: false, backfill: false, date: null, appNum: null };
+  const opts = { force: false, dryRun: false, json: false, backfill: false, date: null, appNum: null, help: false };
   const positionals = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--date') {
-      i++;
-      if (argv[i] === undefined) throw new SeedError('USAGE', '--date requires a value');
-      opts.date = argv[i];
+    if (a === '--date' || a.startsWith('--date=')) {
+      const val = flagValue(argv.slice(i, i + 2), '--date');
+      if (val === undefined) throw new SeedError('USAGE', '--date requires a value');
+      opts.date = val;
+      if (a === '--date') i++;
+    } else if (a === '--help' || a === '-h') {
+      opts.help = true;
     } else if (a === '--force') {
       opts.force = true;
     } else if (a === '--dry-run') {
@@ -712,6 +738,8 @@ function parseCliArgs(argv) {
       positionals.push(a);
     }
   }
+
+  if (opts.help) return opts;
 
   if (opts.backfill) {
     if (positionals.length !== 0) {
@@ -743,12 +771,6 @@ const EXIT_CODES = {
   LOCK_TIMEOUT: 4,
 };
 
-function failWith(exitCode, code, message, json) {
-  if (json) console.log(JSON.stringify({ error: message, code }));
-  console.error(`❌ ${message}`);
-  process.exit(exitCode);
-}
-
 /**
  * How the apply date was arrived at, for the human-readable line — empty for a
  * date that was actually measured.
@@ -769,6 +791,10 @@ function reportSingle(result, json) {
     console.log(JSON.stringify(result));
     return;
   }
+  if (result.reason === 'disabled') {
+    console.log('⏭️  Follow-ups are turned off (follow_ups.enabled: false in config/profile.yml); nothing seeded.');
+    return;
+  }
   const dryTag = result.dryRun ? ' [dry-run]' : '';
   if (result.seeded) {
     console.log(`✅ Seeded #${result.appNum}: next follow-up ${result.nextDate} (applied ${result.appliedDate}${appDateNote(result.appDateSource)}, set ${result.setDate})${dryTag}`);
@@ -782,6 +808,10 @@ function reportBackfill(result, json) {
     console.log(JSON.stringify(result));
     return;
   }
+  if (result.reason === 'disabled') {
+    console.log('⏭️  Follow-ups are turned off (follow_ups.enabled: false in config/profile.yml); nothing seeded.');
+    return;
+  }
   const dryTag = result.dryRun ? ' [dry-run]' : '';
   console.log(`✅ Backfill${dryTag}: seeded ${result.seeded.length}, skipped ${result.skipped.length}`);
   for (const s of result.seeded) console.log(`  + #${s.appNum}: next ${s.nextDate}${appDateNote(s.appDateSource)}`);
@@ -791,12 +821,20 @@ function reportBackfill(result, json) {
 async function main() {
   const argv = process.argv.slice(2);
   const jsonRequested = argv.includes('--json');
+  // Bound from the raw argv rather than from opts.json: a parse that fails mid-argv
+  // never settles opts.json, and the two disagree for `--date --json` (#5198).
+  const failWith = makeCliFailWith(jsonRequested);
   let opts;
   try {
     opts = parseCliArgs(argv);
   } catch (err) {
-    failWith(EXIT_CODES[err.code] ?? 1, err.code || 'USAGE', err.message, jsonRequested);
+    failWith(EXIT_CODES[err.code] ?? 1, err.code || 'USAGE', err.message);
     return;
+  }
+
+  if (opts.help) {
+    console.log(USAGE);
+    process.exit(0);
   }
 
   try {
@@ -811,7 +849,7 @@ async function main() {
   } catch (err) {
     const code = err.code || 'ERROR';
     const exitCode = EXIT_CODES[code] ?? 1;
-    failWith(exitCode, code, err.message, opts.json);
+    failWith(exitCode, code, err.message);
   }
 }
 
