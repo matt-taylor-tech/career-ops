@@ -68,7 +68,7 @@ export const CAPS = Object.freeze({
  * Lives here rather than in claude-invocation.mjs because it is a fact about the
  * run route's workers, not about Claude. Re-exported there for existing importers.
  */
-export const KNOWN_KINDS = Object.freeze(["pdf", "research", "evaluate", "fix-portal", "verify-link", "cover"]);
+export const KNOWN_KINDS = Object.freeze(["pdf", "research", "evaluate", "fix-portal", "cover"]);
 
 /**
  * What each run-route kind needs. Derived from what its prompt actually does
@@ -81,9 +81,6 @@ export const KNOWN_KINDS = Object.freeze(["pdf", "research", "evaluate", "fix-po
  *             The backend persists it. The agent must not write: the posting is
  *             untrusted input.
  * - fix-portal rewrites one portals.yml entry after finding a working ATS URL.
- * - verify-link fetches the one posting URL the report names and returns a
- *             <<verify-link>> envelope; the backend (verify-link.mjs) writes the
- *             report's Verification line — the worker never writes.
  * - cover     runs cover.md's web research and re-reads the posting url, then
  *             returns the draft letter in its reply. It writes nothing.
  *
@@ -96,7 +93,6 @@ const KIND_CAPABILITIES = Object.freeze({
   research: CAPS.networkReadOnly,
   evaluate: CAPS.networkReadOnly,
   "fix-portal": CAPS.workspaceWrite,
-  "verify-link": CAPS.networkReadOnly,
   cover: CAPS.networkReadOnly,
 });
 

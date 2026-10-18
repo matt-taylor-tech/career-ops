@@ -38,10 +38,6 @@ export function ReplaceLinkButton(props: Props) {
       }
       setOpen(false);
       setValue("");
-      // Offer a fresh live-check of the new link (VerifyLinkButton listens).
-      if (props.target === "report") {
-        window.dispatchEvent(new CustomEvent("co-link-replaced", { detail: { report: props.report } }));
-      }
       router.refresh();
     } catch {
       setError("Could not reach the server.");
