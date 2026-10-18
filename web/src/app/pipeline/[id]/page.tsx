@@ -31,6 +31,7 @@ export default async function ReportPage({ params, searchParams }: {
       pdfReadyFromIndex={await pdfReadyForReport(id)}
       coverReady={coverReady}
       backHref={`/pipeline${query ? `?${query}` : ""}`}
+      applyHref={`/pipeline/${encodeURIComponent(id)}/apply${query ? `?${query}` : ""}`}
     />
   );
 }

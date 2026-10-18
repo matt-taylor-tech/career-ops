@@ -65,6 +65,21 @@ export function looksLikeScoreCell(v) {
 }
 
 /**
+ * Parse numeric score from a Score cell string.
+ *
+ * Extracts the first number (including decimals), stripping markdown bold syntax.
+ * Normalizes European decimal comma to dot. Returns 0 when no numeric value is
+ * present, preserving the documented tracker 'no score' sentinel (#2803).
+ *
+ * @param {string} [s] - Raw score cell such as `4.2/5` or `**4.2/5**`.
+ * @returns {number} Parsed score, or 0 when no numeric value is present.
+ */
+export function parseScore(s) {
+  const m = String(s ?? '').replace(/\*\*/g, '').match(/(\d+(?:[.,]\d+)?)/);
+  return m ? parseFloat(m[1].replace(',', '.')) : 0;
+}
+
+/**
  * A markdown table separator row: `|---|------|...|`, optionally with alignment
  * colons.
  *
@@ -717,6 +732,18 @@ export function normalizeTextKey(value, separator = '') {
 }
 
 /**
+ * Strip trailing punctuation and a markdown autolink wrapper from a raw
+ * `**URL:**` token. Punctuation first: `<https://…/job>,` must become the bare
+ * URL, not `https://…/job>` (angle-first leaves the `>` when a comma follows).
+ *
+ * @param {string} token
+ * @returns {string}
+ */
+export function unwrapReportUrlToken(token) {
+  return String(token).replace(/[),.;]+$/, '').replace(/^<|>$/g, '');
+}
+
+/**
  * The posting URL recorded in the first of `reportNumbers` whose report file in
  * `reportsRoot` has a `**URL:**` line that `accept` takes. Lives here, not in
  * history-ats-seeds.mjs, because liveness-core.mjs needs it and the web app
@@ -734,7 +761,7 @@ export function reportUrlForNumbers(reportNumbers, reportsRoot, accept) {
     try { report = readFileSync(join(reportsRoot, reportName), 'utf-8'); } catch { continue; }
     const match = report.match(/\*\*URL:\*\*[ \t]*(\S+)/);
     if (!match) continue;
-    const url = match[1].replace(/[),.;]+$/, '').replace(/^<|>$/g, '');
+    const url = unwrapReportUrlToken(match[1]);
     if (accept(url)) return url;
   }
   return null;

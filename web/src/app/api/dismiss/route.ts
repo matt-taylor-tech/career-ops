@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJsonObject } from "@/lib/json-body";
 import fs from "node:fs";
 import path from "node:path";
 import { careerOpsRoot, rootScript } from "@/lib/career-ops";
@@ -13,12 +14,8 @@ export const dynamic = "force-dynamic";
 // data/dismissed-postings.tsv and, when the posting is also an inbox row,
 // marks that pipeline.md row skipped so the inbox agrees.
 export async function POST(req: Request) {
-  let body: { url?: unknown; company?: unknown; title?: unknown };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "bad json" }, { status: 400 });
-  }
+  const body = await readJsonObject<{ url?: unknown; company?: unknown; title?: unknown }>(req);
+  if (!body) return NextResponse.json({ error: "bad json" }, { status: 400 });
   const url = typeof body.url === "string" ? body.url : "";
   const root = careerOpsRoot();
   try {

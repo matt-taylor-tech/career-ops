@@ -20,7 +20,8 @@
   <a href="README.ar.md">العربية</a> |
   <a href="README.hi.md">हिन्दी</a> |
   <a href="README.tr.md">Türkçe</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
+  <a href="README.vi.md">Tiếng Việt</a> |
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <!-- The non-breaking spaces (&nbsp;) and word joiners (&#8288;) below decide where each line wraps on a phone. Keep them when editing. -->
@@ -121,7 +122,11 @@ Gönder'e bastıktan sonraki sessizlik seninle ilgili değil. Aynı şeyi gören
 
 <br>
 
-İşe alım kendi kendine düzelmeyecek. Onu yaşayanlar düzeltebilir ve onlar zaten odadalar: notları karşılaştırıyor, birbirlerinin kurulumlarını onarıyorlar. [Düzeltme burada yazılıyor](CONTRIBUTING.md). Bir kulüp değil, bir oda. **Birlikte inşa edelim.**
+İşe alım kendi kendine düzelmeyecek. Onu yaşayanlar düzeltebilir ve onlar zaten odadalar: notları karşılaştırıyor, birbirlerinin kurulumlarını onarıyorlar.
+
+<p align="center"><a href="CONTRIBUTING.md"><img src="https://warpchart.dev/api/builders?lang=tr" alt="Katkıda bulunanların GitHub avatarlarından oluşan hareketli duvar; Nisan 2026 tarihinden beri geliş sırasına göre doluyor ve sıradaki kare boş bırakılıyor." width="100%"></a></p>
+
+[Düzeltme burada yazılıyor](CONTRIBUTING.md). Bir kulüp değil, bir oda. **Birlikte inşa edelim.**
 
 <p align="center"><a href="https://discord.gg/8pRpHETxa4"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Fv10%2Finvites%2F8pRpHETxa4%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&label=Discord&suffix=%20members&color=5865F2&style=for-the-badge&labelColor=2b3137&logo=discord&logoColor=white" alt="Discord: career-ops sunucusunun canlı üye sayısı"></a></p>
 
@@ -203,7 +208,7 @@ npx @santifer/career-ops init
 
 > 💡 `npx`, [Node.js](https://nodejs.org) ile birlikte gelir: yükleyiciyi bir kez çalıştırır,
 > global olarak hiçbir şey kurmaz. Node henüz yok mu? Önce onu kur.
-> (Zaten bir Claude Code / Gemini / Codex CLI kullanıyor musun? O zaman zaten var.)
+> (Zaten bir Claude Code / Codex CLI kullanıyor musun? O zaman zaten var.)
 
 Bu, en son sürümü `./career-ops` içine klonlar ve bağımlılıkları kurar. Sonra:
 

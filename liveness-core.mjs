@@ -1,4 +1,5 @@
 import { resolveColumns, parseTrackerRow, linkedReportNumbers, reportUrlForNumbers } from './tracker-parse.mjs';
+import { parseScanHistoryLine } from './lib/scan-history-columns.mjs';
 
 // Portals write closure banners with typographic punctuation and accents:
 // WTTJ renders "Cette offre n’est plus disponible." with U+2019, not ASCII "'".
@@ -68,6 +69,11 @@ const HARD_EXPIRED_PATTERNS = [
   // VDAB keeps a closed vacancy's page, "Solliciteer nu" button and all, under
   // this banner.
   /deze vacature is niet meer gepubliceerd/i,
+  // getManfred keeps a closed posting's page up without its Apply button and
+  // dates the closure above the title. Postings written in English often have
+  // an FAQ button such as "Can I apply from anywhere?", which reads as an Apply
+  // control, so this has to be a hard pattern.
+  /\boferta cerrada el \d{1,2}\/\d{1,2}\/\d{4}/i,
   // French closure banners. Spelled accent-free on purpose: normalizeForMatch
   // strips diacritics, so "expiree" here matches "expirée" on the page.
   /offre (expiree|n'est plus disponible)/i,
@@ -150,6 +156,10 @@ const APPLY_PATTERNS = [
   /wyslij (cv|aplikacj)/i,
   // Dutch (VDAB, Recruitee career sites in Dutch): "Solliciteer nu", "Solliciteren".
   /\bsollicit(?:eer|eren)\b/i,
+  // Spanish (getManfred): "¡Apúntame!", "sign me up". Not the verb "aplicar":
+  // most getManfred postings, closed ones too, have an FAQ button such as
+  // "¿Puedo aplicar si vivo fuera de España?".
+  /\bapuntame\b/i,
   // Chinese MokaHR and Feishu Jobs detail pages use these exact control texts.
   // Keep them narrow: bare “申请” appears in descriptive prose, while longer
   // labels containing “投递” can be status/history controls rather than Apply.
@@ -305,6 +315,18 @@ export function classifyLiveness({ status = 0, requestedUrl = '', finalUrl = '',
 const EXPIRED_HISTORY_STATUS = /expired/i;
 
 /**
+ * True when a verdict means "the posting body could not be read", not "the
+ * posting is closed". Today that condition is carried inside
+ * `result: 'expired'` with `code: 'insufficient_content'` (nav/footer only, or
+ * a body that sits in an unreadable iframe). Consumers that must not treat such
+ * a verdict as closure call this instead of repeating the code string.
+ * Detection only: it does not change what classifyLiveness returns.
+ */
+export function isUnreadableVerdict(verdict) {
+  return verdict?.code === 'insufficient_content';
+}
+
+/**
  * Plan the `skipped_expired` scan-history rows for a batch of liveness verdicts.
  *
  * The pure half of recording a liveness sweep (#3891). Kept here rather than in
@@ -344,7 +366,11 @@ export function planExpiredHistoryRows(scanHistoryText = '', verdicts = [], norm
 
   // slice(1) skips the header, the same convention collectSeenUrls uses.
   for (const line of String(scanHistoryText ?? '').split('\n').slice(1)) {
-    const [url, , portal = '', title = '', company = '', status = '', location = ''] = line.split('\t');
+    // parseScanHistoryLine undoes the formula escaping the writer applied. The
+    // planned rows go back through appendToScanHistory, which escapes again, so
+    // reading the stored cells raw added one more leading apostrophe to a title,
+    // company or location starting with = + - or @ on every record.
+    const { url, portal, title, company, status, location } = parseScanHistoryLine(line);
     if (!url) continue;
     const key = normalizeUrl(url);
     if (!knownByKey.has(key)) knownByKey.set(key, new Map());
@@ -364,7 +390,7 @@ export function planExpiredHistoryRows(scanHistoryText = '', verdicts = [], norm
   const rows = [];
   const claimed = new Set();
   for (const verdict of verdicts ?? []) {
-    if (verdict?.result !== 'expired' || verdict.code === 'insufficient_content') continue;
+    if (verdict?.result !== 'expired' || isUnreadableVerdict(verdict)) continue;
     const candidate = typeof verdict.url === 'string' ? verdict.url.trim() : '';
     if (!candidate) continue;
     const known = knownByKey.get(normalizeUrl(candidate));

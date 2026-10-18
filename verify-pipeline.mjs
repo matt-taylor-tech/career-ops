@@ -30,9 +30,9 @@ import { fileURLToPath } from 'url';
 import { getCareerOpsRoot, resolveTrackerPath } from './path-resolver.mjs';
 import {
   looksLikeScoreCell, isSeparatorRow, isHeaderRow, resolveColumns,
-  normalizeTextKey, normalizeVia,
+  normalizeTextKey, normalizeVia, unwrapReportUrlToken,
 } from './tracker-parse.mjs';
-import { CONTROL_CHARS, findDeadReportLink } from './tracker-utils.mjs';
+import { CONTROL_CHARS, findDeadReportLink, trackerLinkDirsFor } from './tracker-utils.mjs';
 import { normalizeUrl } from './url-key.mjs';
 import { checkTrackerSync } from './tracker-sync-check.mjs';
 import { normalizeStatus } from './followup-cadence.mjs';
@@ -173,8 +173,10 @@ if (dupes === 0) ok('No exact duplicates found');
 // Markdown links resolve relative to the file that contains them, so report
 // links must resolve against the tracker's own directory (see #760). For the
 // transition we also accept legacy root-relative links: try the tracker dir
-// first, then fall back to the repo root before flagging a link broken.
-const TRACKER_DIR = dirname(APPS_FILE);
+// first, then fall back to the repo root before flagging a link broken. A
+// symlinked tracker file has two "own directories": its target's and the
+// link's, which is the one editors resolve from (#5374).
+const TRACKER_DIRS = trackerLinkDirsFor(CAREER_OPS);
 let brokenReports = 0;
 let uninspectableReports = 0;
 for (const e of entries) {
@@ -182,7 +184,7 @@ for (const e of entries) {
   // data root; a directory is not a report (#4748). Also used by merge-tracker
   // and fix-report-links so all three agree on which rows are broken.
   let inspectionFailure = null;
-  const link = findDeadReportLink(e.report, TRACKER_DIR, CAREER_OPS, {
+  const link = findDeadReportLink(e.report, TRACKER_DIRS, CAREER_OPS, {
     onInspectionError: (failure) => { inspectionFailure = failure; },
   });
   if (inspectionFailure) {
@@ -317,7 +319,7 @@ function extractRole(reportContent) {
 function extractReportUrlKey(reportContent) {
   const m = reportContent.match(/\*\*URL:\*\*[ \t]*(\S+)/);
   if (!m) return '';
-  return normalizeUrl(m[1].replace(/^<|>$/g, '').replace(/[),.;]+$/, ''));
+  return normalizeUrl(unwrapReportUrlToken(m[1]));
 }
 
 const reportFiles = existsSync(REPORTS_DIR)

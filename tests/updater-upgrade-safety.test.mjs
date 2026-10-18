@@ -36,6 +36,7 @@ function makeRepo(prefix) {
   g('config', 'core.autocrlf', 'false');
   g('config', 'user.email', 'test@example.com');
   g('config', 'user.name', 'Test');
+  g('config', 'core.hooksPath', join(dir, 'no-such-hooks'));
   return { dir, g, ctx: { git: g, root: dir } };
 }
 

@@ -22,6 +22,7 @@ console.log('\n🧪 Testing updater version short SHA formatting (#3883)...');
     gitIn(dir, 'init', '-q', '-b', 'main', '.');
     gitIn(dir, 'config', 'user.email', 'test@example.com');
     gitIn(dir, 'config', 'user.name', 'Test');
+    gitIn(dir, 'config', 'core.hooksPath', join(dir, 'no-such-hooks'));
     gitIn(dir, 'add', '-A');
     gitIn(dir, 'commit', '-qm', 'initial');
 
@@ -110,6 +111,7 @@ console.log('\n🧪 Testing updater version short SHA formatting (#3883)...');
     gitIn(outer, 'init', '-q', '-b', 'main', '.');
     gitIn(outer, 'config', 'user.email', 'test@example.com');
     gitIn(outer, 'config', 'user.name', 'Test');
+    gitIn(outer, 'config', 'core.hooksPath', join(outer, 'no-such-hooks'));
     const inner = join(outer, 'nested');
     mkdirSync(inner);
     writeFileSync(join(inner, 'VERSION'), '1.32.0\n');

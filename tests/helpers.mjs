@@ -136,7 +136,7 @@ export function realDataRootDrift() {
   if (!ownsSandbox || realRootChecked) return null;
   realRootChecked = true;
   const drift = diffSnapshots(realRootBefore, snapshotDataRoot(REAL_DATA_ROOT, ROOT));
-  return drift.length > 0 ? describeDrift(REAL_DATA_ROOT, drift) : null;
+  return drift.length > 0 ? describeDrift(REAL_DATA_ROOT, drift, ROOT) : null;
 }
 
 /**
@@ -485,6 +485,14 @@ let lastFailure = null;
  *
  * @returns {{status: number|null, signal: string|null, stdout: string, stderr: string}|null}
  */
+// describeSpawn lives in helpers/describe-spawn.mjs and is re-exported here so
+// the 410 tests that already import from this file can reach it. It is a
+// SEPARATE module because importing this one is not free: the lines above set
+// process.env.CAREER_OPS_TRACKER, call pinSandboxDataRoot() and register an
+// 'exit' hook. A test that does not already depend on that must be able to
+// describe a failed child without inheriting it.
+export { describeSpawn } from './helpers/describe-spawn.mjs';
+
 export function lastRunFailure() {
   return lastFailure;
 }

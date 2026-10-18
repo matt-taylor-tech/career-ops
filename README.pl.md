@@ -20,7 +20,8 @@
   <a href="README.ar.md">العربية</a> |
   <a href="README.hi.md">हिन्दी</a> |
   <a href="README.tr.md">Türkçe</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
+  <a href="README.vi.md">Tiếng Việt</a> |
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <!-- The non-breaking spaces (&nbsp;) and word joiners (&#8288;) below decide where each line wraps on a phone. Keep them when editing. -->
@@ -121,7 +122,11 @@ Cisza po kliknięciu „wyślij” nie mówi nic o tobie. Dość ludzi zobaczył
 
 <br>
 
-Rekrutacja sama się nie naprawi. Ludzie, którzy przez nią przechodzą, mogą, i już są w pokoju: porównują notatki i naprawiają sobie nawzajem konfiguracje. [Tu pisze się poprawkę](CONTRIBUTING.md). Pokój, nie klub. **Budujmy razem.**
+Rekrutacja sama się nie naprawi. Ludzie, którzy przez nią przechodzą, mogą, i już są w pokoju: porównują notatki i naprawiają sobie nawzajem konfiguracje.
+
+<p align="center"><a href="CONTRIBUTING.md"><img src="https://warpchart.dev/api/builders?lang=pl" alt="Animowana ściana awatarów GitHub osób współtworzących projekt, wypełniana w kolejności dołączania od kwiecień 2026, z kolejnym polem pozostawionym wolnym." width="100%"></a></p>
+
+[Tu pisze się poprawkę](CONTRIBUTING.md). Pokój, nie klub. **Budujmy razem.**
 
 <p align="center"><a href="https://discord.gg/8pRpHETxa4"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Fv10%2Finvites%2F8pRpHETxa4%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&label=Discord&suffix=%20members&color=5865F2&style=for-the-badge&labelColor=2b3137&logo=discord&logoColor=white" alt="Discord: liczba członków serwera career-ops na żywo"></a></p>
 
@@ -203,7 +208,7 @@ npx @santifer/career-ops init
 
 > 💡 `npx` jest dostarczany z [Node.js](https://nodejs.org): uruchamia instalator raz,
 > nie instalując niczego globalnie. Nie masz jeszcze Node? Zainstaluj go najpierw.
-> (Używasz już CLI Claude Code / Gemini / Codex? To już go masz.)
+> (Używasz już CLI Claude Code / Codex? To już go masz.)
 
 To klonuje najnowsze wydanie do `./career-ops` i instaluje zależności. Potem:
 

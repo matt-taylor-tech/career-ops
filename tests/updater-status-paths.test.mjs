@@ -48,6 +48,7 @@ function makeRepo({ quotepath = false } = {}) {
   g('config', 'user.email', 'test@example.com');
   g('config', 'user.name', 'Test');
   g('config', 'core.quotepath', String(quotepath));
+  g('config', 'core.hooksPath', join(dir, 'no-such-hooks'));
   return { dir, g };
 }
 

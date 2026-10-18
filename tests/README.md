@@ -164,4 +164,7 @@ inherits that, so the default for a new test is already safe.
 
 `data-root-guard.mjs` fingerprints the real user layer before the run and at
 exit — including an exit by Ctrl-C — and fails the run, naming each path, if
-anything differs.
+anything differs. That includes the user files resolved from the checkout
+rather than the data root (`plugins.local/`, `plugins.lock`, `opencode.json`,
+`.claude/settings.json`, `.claude/hooks/`), which the scratch root does not
+move: a test that touches them works in a fixture checkout of its own.

@@ -32,3 +32,28 @@ test("resolvePostingUrl prefers the tracker cell", () => {
   assert.equal(resolvePostingUrl("—", "https://jobs.example.com/report"), "https://jobs.example.com/report");
   assert.equal(resolvePostingUrl("", ""), "");
 });
+
+test("readTrackerUrl keeps a value that is already a URL", () => {
+  const nested = "https://jobs.example.com/[other](https://other.example.com)";
+  assert.equal(readTrackerUrl(nested), nested);
+  const once = readTrackerUrl(`[job](<${nested}>)`);
+  assert.equal(once, nested);
+  assert.equal(readTrackerUrl(once), nested);
+});
+
+test("postingHref does not reparse an extracted URL", () => {
+  const nested = "https://jobs.example.com/[other](https://other.example.com)";
+  assert.equal(postingHref(nested), nested);
+});
+
+test("postingHref keeps spaces inside a markdown destination", () => {
+  assert.equal(
+    postingHref("[job](https://jobs.example.com/Software\\ Engineer)"),
+    "https://jobs.example.com/Software Engineer",
+  );
+  assert.equal(
+    postingHref("[job](https://jobs.example.com/a_(Remote Role))"),
+    "https://jobs.example.com/a_(Remote Role)",
+  );
+  assert.equal(postingHref("https://jobs.example.com/1 trailing note"), "https://jobs.example.com/1");
+});

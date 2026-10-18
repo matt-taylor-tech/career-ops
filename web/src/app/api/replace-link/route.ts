@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJsonObject } from "@/lib/json-body";
 import fs from "node:fs";
 import path from "node:path";
 import { careerOpsRoot, rootScript, findReportFile } from "@/lib/career-ops";
@@ -40,12 +41,8 @@ function fail(code: string) {
 }
 
 export async function POST(req: Request) {
-  let body: { target?: unknown; url?: unknown; report?: unknown; newUrl?: unknown };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "bad json" }, { status: 400 });
-  }
+  const body = await readJsonObject<{ target?: unknown; url?: unknown; report?: unknown; newUrl?: unknown }>(req);
+  if (!body) return NextResponse.json({ error: "bad json" }, { status: 400 });
   const newUrl = typeof body.newUrl === "string" ? body.newUrl : "";
   const root = careerOpsRoot();
 

@@ -473,6 +473,82 @@ try {
     fail(`fetch language switch: default=${fetchedDefault.length}, all=${fetchedAll.length}`);
   }
 
+  // portals.yml preferred_languages reaches the provider as
+  // ctx.preferredLanguageRank. Without the switch, the preferred translations
+  // come back next to the default version, and no other language does.
+  const trilingual = {
+    ...bilingual,
+    translations: {
+      ...bilingual.translations,
+      fr: { title: 'Ingénieur QA senior (h/f)', description: '<p>Acme crée des logiciels.</p>', requirements: '<p>Playwright</p>' },
+    },
+  };
+  const rankOf = (...languages) => (language) => languages.indexOf(language);
+  const preferredOnly = parseRecruiteeResponse({ offers: [trilingual] }, 'Acme', { preferredLanguageRank: rankOf('fr') });
+  if (JSON.stringify(preferredOnly.map(v => v.language)) === JSON.stringify(['de', 'fr'])) {
+    pass('parseRecruiteeResponse with preferred languages returns the default version and the preferred one only');
+  } else {
+    fail(`preferred-only versions = ${JSON.stringify(preferredOnly.map(v => v.language))}`);
+  }
+  const noPreferredTranslation = parseRecruiteeResponse({ offers: [bilingual] }, 'Acme', { preferredLanguageRank: rankOf('fr') });
+  if (JSON.stringify(noPreferredTranslation.map(v => v.language)) === JSON.stringify(['de'])) {
+    pass('parseRecruiteeResponse with preferred languages returns the default version alone when no translation is preferred');
+  } else {
+    fail(`no preferred translation = ${JSON.stringify(noPreferredTranslation.map(v => v.language))}`);
+  }
+  const fetchedPreferred = await recruitee.fetch({ name: 'Acme', careers_url: 'https://acme.recruitee.com' },
+    { fetchJson: async () => ({ offers: [trilingual] }), preferredLanguageRank: rankOf('en') });
+  if (JSON.stringify(fetchedPreferred.map(v => v.language)) === JSON.stringify(['de', 'en'])) {
+    pass('recruitee.fetch() reads the preferred languages from ctx.preferredLanguageRank');
+  } else {
+    fail(`fetch preferred languages = ${JSON.stringify(fetchedPreferred.map(v => v.language))}`);
+  }
+
+  // No translation matches the top-level fields: without the switch the offer
+  // still comes back once — the translation in the best-ranked preferred
+  // language the offer has, else the top-level fields with no language.
+  const unknownDefaultTrilingual = {
+    ...unknownDefaultOffer,
+    translations: {
+      ...unknownDefaultOffer.translations,
+      fr: { title: 'Ingénieur backend (h/f)', description: '<p>Français</p>' },
+    },
+  };
+  const unknownDefaultCases = [
+    ['de, en preferred → de', rankOf('de', 'en'), ['de|?lang=de']],
+    ['en, de preferred → en', rankOf('en', 'de'), ['en|?lang=en']],
+    ['es, fr, en preferred → fr, the best-ranked the offer has', rankOf('es', 'fr', 'en'), ['fr|?lang=fr']],
+    ['only languages the offer lacks → top-level fields, no language', rankOf('es'), ['undefined|']],
+  ];
+  for (const [label, rank, expected] of unknownDefaultCases) {
+    const actual = parseRecruiteeResponse({ offers: [unknownDefaultTrilingual] }, 'Acme', { preferredLanguageRank: rank })
+      .map(v => `${v.language}|${v.url.replace('https://acme.recruitee.com/o/backend', '')}`);
+    if (JSON.stringify(actual) === JSON.stringify(expected)) pass(`parseRecruiteeResponse, no default version: ${label}`);
+    else fail(`no default version, ${label} — got ${JSON.stringify(actual)}`);
+  }
+
+  // A ?lang= on one entry's careers_url (Recruitee's own param) asks for that
+  // language for that entry: it replaces the default version wherever the offer
+  // has it, and wins over the preferred languages. With dedupIncludeLanguage
+  // every version comes back regardless.
+  const fetchLanguages = async (offer, careersUrl, extra = {}) => (await recruitee.fetch(
+    { name: 'Acme', careers_url: careersUrl },
+    { fetchJson: async () => ({ offers: [offer] }), ...extra },
+  )).map(v => `${v.language}|${v.url.replace(/^https:\/\/acme\.recruitee\.com\/o\/[a-z-]+/, '')}`);
+  const entryCases = [
+    ['?lang=en on careers_url → the English version alone', await fetchLanguages(trilingual, 'https://acme.recruitee.com/?lang=en'), ['en|?lang=en']],
+    ['?lang= the offer lacks → the default version', await fetchLanguages(trilingual, 'https://acme.recruitee.com/?lang=es'), ['de|?lang=de']],
+    ['?lang= wins over the preferred languages', await fetchLanguages(trilingual, 'https://acme.recruitee.com/?lang=EN', { preferredLanguageRank: rankOf('fr') }), ['en|?lang=en']],
+    ['a malformed ?lang= is ignored', await fetchLanguages(trilingual, 'https://acme.recruitee.com/?lang=en%20US'), ['de|?lang=de']],
+    ['with dedupIncludeLanguage every version comes back', await fetchLanguages(trilingual, 'https://acme.recruitee.com/?lang=en', { dedupIncludeLanguage: true }), ['de|?lang=de', 'en|?lang=en', 'fr|?lang=fr']],
+    ['no default version, ?lang=en → the English translation', await fetchLanguages(unknownDefaultTrilingual, 'https://acme.recruitee.com/?lang=en'), ['en|?lang=en']],
+    ['no default version, ?lang= the offer lacks → top-level fields, no language', await fetchLanguages(unknownDefaultTrilingual, 'https://acme.recruitee.com/?lang=es', { preferredLanguageRank: rankOf('fr') }), ['undefined|']],
+  ];
+  for (const [label, actual, expected] of entryCases) {
+    if (JSON.stringify(actual) === JSON.stringify(expected)) pass(`recruitee.fetch(): ${label}`);
+    else fail(`recruitee.fetch(): ${label} — got ${JSON.stringify(actual)}`);
+  }
+
   // ── Demo-tenant filtering ──────────────────────────────────────────────────
   // Recruitee itself stamps "(Sample)" on its own seeded posting — captured
   // live, byte-identical, from two unrelated tenants (adecco, accenture).

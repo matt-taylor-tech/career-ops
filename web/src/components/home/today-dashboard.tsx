@@ -27,11 +27,14 @@ import { resolveHeroState, mayClaimAllClear, showsQueue, missingSourceLabel, dis
 export function TodayDashboard({
   applications,
   reasons,
+  legitimacy,
   inbox,
   inBetween,
 }: {
   applications: Application[];
   reasons: Record<string, CardReason>;
+  /** Block-G legitimacy per report number, read by the page from each report. */
+  legitimacy: Record<string, string>;
   inbox: Pick<InboxJob, "url" | "done">[];
   inBetween: boolean;
 }) {
@@ -113,7 +116,9 @@ export function TodayDashboard({
   // ordering lives in lib/home/awaiting.mjs so it can be tested — see the file
   // for why "first six in the array" was a bug waiting for #3529.
   const awaiting = useMemo(() => pickAwaitingDecision(applications, scoreNum), [applications]);
-  const awaitingGroups = useMemo(() => groupAwaiting(awaiting), [awaiting]);
+  // With the legitimacy, a flagged posting is grouped as the report page
+  // labels it (#5300), so "Apply next" below never points at one.
+  const awaitingGroups = useMemo(() => groupAwaiting(awaiting, (a) => legitimacy[a.n]), [awaiting, legitimacy]);
   const recommended = awaitingGroups.find(([label]) => label === "Recommended")?.[1] ?? [];
 
   const newThisWeek = freshCount;

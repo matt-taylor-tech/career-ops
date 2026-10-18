@@ -20,7 +20,8 @@
   <a href="README.ar.md">العربية</a> |
   <a href="README.hi.md">हिन्दी</a> |
   <a href="README.tr.md">Türkçe</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
+  <a href="README.vi.md">Tiếng Việt</a> |
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <!-- The non-breaking spaces (&nbsp;) and word joiners (&#8288;) below decide where each line wraps on a phone. Keep them when editing. -->
@@ -121,7 +122,11 @@ npx @santifer/career-ops init
 
 <br>
 
-채용은 저절로 고쳐지지 않습니다. 그것을 겪는 사람들은 고칠 수 있고, 이미 그 방에 모여 서로 메모를 비교하고 서로의 설정을 고쳐 주고 있습니다. [고치는 코드는 여기서 쓰입니다](CONTRIBUTING.md). 클럽이 아니라 방입니다. **함께 만들어 갑시다.**
+채용은 저절로 고쳐지지 않습니다. 그것을 겪는 사람들은 고칠 수 있고, 이미 그 방에 모여 서로 메모를 비교하고 서로의 설정을 고쳐 주고 있습니다.
+
+<p align="center"><a href="CONTRIBUTING.md"><img src="https://warpchart.dev/api/builders?lang=ko-KR" alt="기여자들의 GitHub 아바타가 2026년 4월부터 도착한 순서대로 채워지는 애니메이션 벽. 다음 칸은 비워 두었습니다." width="100%"></a></p>
+
+[고치는 코드는 여기서 쓰입니다](CONTRIBUTING.md). 클럽이 아니라 방입니다. **함께 만들어 갑시다.**
 
 <p align="center"><a href="https://discord.gg/8pRpHETxa4"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Fv10%2Finvites%2F8pRpHETxa4%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&label=Discord&suffix=%20members&color=5865F2&style=for-the-badge&labelColor=2b3137&logo=discord&logoColor=white" alt="Discord: career-ops 서버의 실시간 멤버 수"></a></p>
 
@@ -203,7 +208,7 @@ npx @santifer/career-ops init
 
 > 💡 `npx`는 [Node.js](https://nodejs.org)에 포함되어 있습니다: 전역으로 아무것도 설치하지 않고
 > 설치 프로그램을 한 번 실행합니다. Node가 아직 없나요? 먼저 설치하세요.
-> (이미 Claude Code / Gemini / Codex CLI를 쓰고 있나요? 그러면 이미 있습니다.)
+> (이미 Claude Code / Codex CLI를 쓰고 있나요? 그러면 이미 있습니다.)
 
 이 명령은 최신 릴리스를 `./career-ops`에 클론하고 의존성을 설치합니다. 그다음:
 

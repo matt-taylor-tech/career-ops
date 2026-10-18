@@ -20,7 +20,8 @@
   <a href="README.ar.md">العربية</a> |
   <a href="README.hi.md">हिन्दी</a> |
   <a href="README.tr.md">Türkçe</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
+  <a href="README.vi.md">Tiếng Việt</a> |
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <!-- The non-breaking spaces (&nbsp;) and word joiners (&#8288;) below decide where each line wraps on a phone. Keep them when editing. -->
@@ -121,7 +122,11 @@ npx @santifer/career-ops init
 
 <br>
 
-Найм сам себе не виправить. Люди, які через нього проходять, можуть, і вони вже в кімнаті: звіряють нотатки й лагодять одне одному налаштування. [Саме тут пишеться виправлення](CONTRIBUTING.md). Кімната, а не клуб. **Будуймо разом.**
+Найм сам себе не виправить. Люди, які через нього проходять, можуть, і вони вже в кімнаті: звіряють нотатки й лагодять одне одному налаштування.
+
+<p align="center"><a href="CONTRIBUTING.md"><img src="https://warpchart.dev/api/builders?lang=ua" alt="Анімована стіна з GitHub-аватарів учасників, що заповнюється в порядку приходу з квітень 2026 р.; наступна клітинка лишається вільною." width="100%"></a></p>
+
+[Саме тут пишеться виправлення](CONTRIBUTING.md). Кімната, а не клуб. **Будуймо разом.**
 
 <p align="center"><a href="https://discord.gg/8pRpHETxa4"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Fv10%2Finvites%2F8pRpHETxa4%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&label=Discord&suffix=%20members&color=5865F2&style=for-the-badge&labelColor=2b3137&logo=discord&logoColor=white" alt="Discord: кількість учасників сервера career-ops наживо"></a></p>
 
@@ -203,7 +208,7 @@ npx @santifer/career-ops init
 
 > 💡 `npx` іде разом із [Node.js](https://nodejs.org): він запускає інсталятор один раз,
 > нічого не встановлюючи глобально. Ще немає Node? Спершу встановіть його.
-> (Уже користуєтеся CLI Claude Code / Gemini / Codex? Тоді він у вас уже є.)
+> (Уже користуєтеся CLI Claude Code / Codex? Тоді він у вас уже є.)
 
 Це клонує останній реліз у `./career-ops` і встановлює залежності. Потім:
 

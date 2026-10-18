@@ -31,6 +31,7 @@ import { isNestedCheckout, trackedFiles } from '../lib/mjs-files.mjs';
 import { codeMask, isCodeRange } from './helpers.mjs';
 import { shouldDedupScanHistoryRow } from '../scan.mjs';
 import { parseScanHistory, detectReposts } from '../detect-reposts.mjs';
+import { describeSpawn } from './helpers/describe-spawn.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -78,7 +79,7 @@ function inFrozenTz(tz, expr, instant = INSTANT) {
     env: { ...process.env, TZ: tz },
   });
   assert.equal(r.error, undefined, `spawn failed: ${r.error?.message}`);
-  assert.equal(r.status, 0, `child exited ${r.status}: ${r.stderr}`);
+  assert.equal(r.status, 0, describeSpawn(r, `child exited ${r.status}`));
   return r.stdout.trim();
 }
 

@@ -16,6 +16,7 @@ import { createCvEnvelopeFilter, type CvEnvelope } from "@/lib/cv-envelope.mjs";
 import { createReportEnvelopeFilter } from "@/lib/report-envelope.mjs";
 import { persistEvaluation, evaluateRunOutcome } from "@/lib/report-persist.mjs";
 import { buildPrompt, isShellSafeCompanyName, layoutPreamble } from "@/lib/run-prompts.mjs";
+import { parseCoverRequest } from "@/lib/cover-brief.mjs";
 import { capabilitiesFor } from "@/lib/worker-capabilities.mjs";
 import { fencingReport, isCliAllowedForCapabilities } from "@/lib/cli-fencing.mjs";
 import { claudeCliArgs } from "@/lib/claude-invocation.mjs";
@@ -30,9 +31,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 800; // a real oferta evaluation / pdf-mode CV tailoring + render is heavy and multi-step
 
 export async function POST(req: Request) {
-  const body = await readJsonObject<{ kind?: string; input?: string; cliId?: string }>(req);
+  const body = await readJsonObject<{ kind?: string; input?: string; cliId?: string; brief?: unknown }>(req);
   if (!body) return new Response(JSON.stringify({ error: "bad json" }), { status: 400 });
-  const { kind = "evaluate", input, cliId: requestedCliId } = body;
+  const { kind = "evaluate", input, cliId: requestedCliId, brief } = body;
   if (!input || !requestedCliId) {
     return new Response(JSON.stringify({ error: "input and cliId required" }), { status: 400 });
   }
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
   // it to modes/oferta.md meant a configured market passed a check on a file the
   // run never opens, and would have missed a market dir with no evaluation mode.
   const lang = readLanguageConfig();
-  const needsScript: Record<string, string> = { evaluate: lang.evalModeFile, "fix-portal": "verify-portals.mjs", pdf: "generate-pdf.mjs" };
+  const needsScript: Record<string, string> = { evaluate: lang.evalModeFile, "fix-portal": "verify-portals.mjs", pdf: "generate-pdf.mjs", cover: "modes/cover.md" };
   const required = needsScript[kind];
   // CAREER_OPS_ROOT is runtime user data, not a build input. Tracing this
   // dynamic path would copy the whole web project into every server bundle.
@@ -92,7 +93,7 @@ export async function POST(req: Request) {
 
   // An A–F score is meaningless without a CV to score against — the CLI would
   // hallucinate a fit narrative and still emit a VERDICT. Require cv.md first.
-  if ((kind === "evaluate" || kind === "pdf") && !fs.existsSync(path.join(careerOpsRoot(), "cv.md"))) {
+  if ((kind === "evaluate" || kind === "pdf" || kind === "cover") && !fs.existsSync(path.join(careerOpsRoot(), "cv.md"))) {
     return new Response(
       JSON.stringify({ error: "Add your CV first so I can score this against you — drop it on the home page." }),
       { status: 400, headers: { "Content-Type": "application/json" } },
@@ -142,6 +143,14 @@ export async function POST(req: Request) {
     pdfPaths = pathsResult.paths;
   }
 
+  const coverRequest = kind === "cover" ? parseCoverRequest({ input, brief, root: careerOpsRoot(), findReportFile }) : undefined;
+  if (coverRequest && !coverRequest.ok) {
+    return new Response(JSON.stringify({ error: coverRequest.error }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   // Resolve the posting date HERE rather than asking the agent for it. The
   // scanner already wrote it from the provider's own `offer.postedAt`, so this
   // copies a recorded value instead of inviting a guess — and modes/oferta.md is
@@ -165,7 +174,18 @@ export async function POST(req: Request) {
   const extraCodeDir = separateCodeRoot();
   const prompt =
     layoutPreamble({ dataRoot: careerOpsRoot(), codeRoot: codeRoot() }) +
-    buildPrompt({ kind, input, memory: readMemory(), today, postedAt, lang, cvTemplate, verifyTarget, reportFile: pdfPaths?.reportFile });
+    buildPrompt({
+      kind,
+      input,
+      memory: readMemory(),
+      today,
+      postedAt,
+      lang,
+      cvTemplate,
+      verifyTarget,
+      reportFile: pdfPaths?.reportFile ?? (coverRequest?.ok ? coverRequest.reportFile : undefined),
+      coverBrief: coverRequest?.ok ? coverRequest.brief : undefined,
+    });
 
   const isClaude = cliId === "claude";
   // Which tools each kind gets, and the whole claude argv, live in

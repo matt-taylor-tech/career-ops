@@ -3,7 +3,7 @@ import { pickAwaitingDecision } from "@/lib/home/awaiting.mjs";
 import { cardReason } from "@/lib/machine-summary.mjs";
 import type { CardReason } from "@/lib/machine-summary.mjs";
 import { todaySnapshot } from "@/lib/home/today-snapshot.mjs";
-import { scoreNum } from "@/lib/format";
+import { scoreNum, parseReport } from "@/lib/format";
 import { OnboardingBanner } from "@/components/onboarding-banner";
 import { OnboardingProgress } from "@/components/home/onboarding-progress";
 import { FirstRunHome } from "@/components/home/first-run-home";
@@ -20,9 +20,13 @@ export default function Home() {
 
   const { inbox, applications } = todaySnapshot(snapshot, scoreNum);
   const reasons: Record<string, CardReason> = {};
+  const legitimacy: Record<string, string> = {};
   for (const app of pickAwaitingDecision(applications, scoreNum)) {
-    const reason = cardReason(readReport(app.n)?.content ?? "");
+    const content = readReport(app.n)?.content ?? "";
+    const reason = cardReason(content);
     if (reason) reasons[app.n] = reason;
+    const tier = parseReport(content).legitimacy;
+    if (tier) legitimacy[app.n] = tier;
   }
   // Established / in-between: the dual-loop retention dashboard. Show the setup
   // banner whenever ANY prereq is missing (mirrors the core doctor.mjs), so a
@@ -35,7 +39,7 @@ export default function Home() {
       <div className="mx-auto max-w-5xl px-6 pt-6">
         <OnboardingProgress />
       </div>
-      <TodayDashboard applications={applications} reasons={reasons} inbox={inbox} inBetween={phase === "in-between"} />
+      <TodayDashboard applications={applications} reasons={reasons} legitimacy={legitimacy} inbox={inbox} inBetween={phase === "in-between"} />
     </>
   );
 }

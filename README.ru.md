@@ -20,7 +20,8 @@
   <a href="README.ar.md">العربية</a> |
   <a href="README.hi.md">हिन्दी</a> |
   <a href="README.tr.md">Türkçe</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
+  <a href="README.vi.md">Tiếng Việt</a> |
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <!-- The non-breaking spaces (&nbsp;) and word joiners (&#8288;) below decide where each line wraps on a phone. Keep them when editing. -->
@@ -121,7 +122,11 @@ npx @santifer/career-ops init
 
 <br>
 
-Найм сам себя не починит. Люди, которые через него проходят, могут, и они уже в комнате: сверяют заметки и чинят друг другу настройки. [Именно здесь пишется исправление](CONTRIBUTING.md). Комната, а не клуб. **Давайте строить вместе.**
+Найм сам себя не починит. Люди, которые через него проходят, могут, и они уже в комнате: сверяют заметки и чинят друг другу настройки.
+
+<p align="center"><a href="CONTRIBUTING.md"><img src="https://warpchart.dev/api/builders?lang=ru" alt="Анимированная стена из GitHub-аватаров участников, которая заполняется в порядке прихода с апрель 2026 г.; следующая клетка оставлена свободной." width="100%"></a></p>
+
+[Именно здесь пишется исправление](CONTRIBUTING.md). Комната, а не клуб. **Давайте строить вместе.**
 
 <p align="center"><a href="https://discord.gg/8pRpHETxa4"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Fv10%2Finvites%2F8pRpHETxa4%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&label=Discord&suffix=%20members&color=5865F2&style=for-the-badge&labelColor=2b3137&logo=discord&logoColor=white" alt="Discord: число участников сервера career-ops в реальном времени"></a></p>
 
@@ -203,7 +208,7 @@ npx @santifer/career-ops init
 
 > 💡 `npx` идёт вместе с [Node.js](https://nodejs.org): он запускает установщик один раз,
 > ничего не устанавливая глобально. Ещё нет Node? Сначала установите его.
-> (Уже пользуетесь CLI Claude Code / Gemini / Codex? Тогда он у вас уже есть.)
+> (Уже пользуетесь CLI Claude Code / Codex? Тогда он у вас уже есть.)
 
 Это клонирует последний релиз в `./career-ops` и устанавливает зависимости. Затем:
 

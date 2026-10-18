@@ -17,26 +17,11 @@ import { PipelineTableRowsSkeleton } from "@/components/page-loading-skeletons";
 import { startRouteProgress } from "@/components/route-progress";
 import { sortRows } from "@/lib/core/pipeline-sort.mjs";
 import { PageFrame } from "@/components/page-frame";
-import { pipelineQuery } from "@/lib/pipeline-navigation.mjs";
+import { PIPELINE_TABS, pipelineQuery, pipelineTab } from "@/lib/pipeline-navigation.mjs";
 import { COMPARE_MAX } from "@/lib/pipeline-compare.mjs";
 import { postingHref, postingLabel } from "@/lib/posting-url.mjs";
 
-// INBOX (the triage queue) is the default tab; the rest filter the tracker.
-const TABS = [
-  "INBOX",
-  "ALL",
-  "EVALUATED",
-  "APPLIED",
-  "RESPONDED",
-  "ASSESSMENT",
-  "INTERVIEW",
-  "OFFER",
-  "HIRED",
-  "REJECTED",
-  "DISCARDED",
-  "SKIP",
-] as const;
-type Tab = (typeof TABS)[number];
+type Tab = (typeof PIPELINE_TABS)[number];
 
 const SORT_KEYS = ["tracker", "company", "role", "score", "status", "date"] as const;
 type SortKey = (typeof SORT_KEYS)[number];
@@ -44,9 +29,11 @@ type SortKey = (typeof SORT_KEYS)[number];
 export function PipelineView({
   applications,
   inbox,
+  inboxCount,
 }: {
   applications: Application[];
-  inbox: InboxJob[];
+  inbox: InboxJob[] | null;
+  inboxCount: number;
 }) {
   const params = useSearchParams();
   const router = useRouter();
@@ -66,8 +53,7 @@ export function PipelineView({
   // The URL is the SINGLE source of truth for tab/min/sort/dir, so the home stat
   // tiles' deep links AND the assistant's filterPipeline/navigate actions drive
   // the table identically (no useState mirror → no desync).
-  const pTab = (params.get("tab") ?? "").toUpperCase();
-  const tab: Tab = (TABS as readonly string[]).includes(pTab) ? (pTab as Tab) : "INBOX";
+  const tab: Tab = pipelineTab(params.get("tab"));
   const visibleTab = isPending && pendingTab ? pendingTab : tab;
   const pMin = parseFloat(params.get("min") ?? "");
   const minFilter: number | null = Number.isFinite(pMin) ? pMin : null;
@@ -100,7 +86,7 @@ export function PipelineView({
       if (qs === params.toString()) return;
       if (Object.prototype.hasOwnProperty.call(updates, "tab")) {
         const nextTab = String(updates.tab ?? "INBOX").toUpperCase();
-        if ((TABS as readonly string[]).includes(nextTab)) setPendingTab(nextTab as Tab);
+        if ((PIPELINE_TABS as readonly string[]).includes(nextTab)) setPendingTab(nextTab as Tab);
       }
       startRouteProgress();
       startNavigation(() => {
@@ -113,19 +99,6 @@ export function PipelineView({
   useEffect(() => {
     if (!isPending) setPendingTab(null);
   }, [isPending]);
-
-  // Pending + deduped by URL (pipeline.md can list the same posting twice) so the
-  // header count, the tab count and the triage list all agree on one number.
-  const pendingInbox = useMemo(() => {
-    const seen = new Set<string>();
-    const out: InboxJob[] = [];
-    for (const j of inbox) {
-      if (j.done || seen.has(j.url)) continue;
-      seen.add(j.url);
-      out.push(j);
-    }
-    return out;
-  }, [inbox]);
 
   const filtered = useMemo(() => {
     if (tab === "INBOX") return [];
@@ -184,7 +157,7 @@ export function PipelineView({
         <div>
           <h1 className="font-display text-2xl tracking-tight text-landing">Pipeline</h1>
           <p className="mt-1 text-sm text-muted">
-            <span className="tabular-nums">{pendingInbox.length}</span> in inbox ·{" "}
+            <span className="tabular-nums">{inboxCount}</span> in inbox ·{" "}
             <span className="tabular-nums">{visibleApplications.length}</span> tracked
           </p>
         </div>
@@ -204,17 +177,19 @@ export function PipelineView({
 
       {/* tabs */}
       <div className="mt-6 flex flex-wrap gap-1 border-b border-border">
-        {TABS.map((t) => {
+        {PIPELINE_TABS.map((t) => {
           const count =
             t === "INBOX"
-              ? pendingInbox.length
+              ? inboxCount
               : t === "ALL"
                 ? visibleApplications.length
                 : visibleApplications.filter((r) => canonStatus(r.status).includes(t)).length;
           return (
             <button
               key={t}
+              type="button"
               ref={tab === t ? activeTab : undefined}
+              aria-pressed={visibleTab === t}
               onClick={() => setParams({ tab: t === "INBOX" ? null : t })}
               className={cn(
                 // gap-1, not a whitespace text node: flex containers drop
@@ -289,8 +264,21 @@ export function PipelineView({
       {visibleTab === "INBOX" ? (
         /* ── Inbox: the triage surface (Abundance → Triage → Shortlist → Score) ── */
         <>
-          <InboxTriage inbox={pendingInbox} />
-          {pendingInbox.length === 0 && <InboxEmpty tracked={visibleApplications.length} />}
+          {inbox === null ? (
+            <div role="status" className="mt-4 overflow-x-auto rounded-2xl border border-border">
+              <span className="sr-only">Loading inbox…</span>
+              <table aria-hidden="true" className="w-full min-w-[44rem] text-sm">
+                <tbody className="divide-y divide-border">
+                  <PipelineTableRowsSkeleton />
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <>
+              <InboxTriage inbox={inbox} />
+              {inbox.length === 0 && <InboxEmpty tracked={visibleApplications.length} />}
+            </>
+          )}
         </>
       ) : isPending || filtered.length > 0 ? (
         /* ── Tracker table ──
@@ -350,7 +338,7 @@ export function PipelineView({
                       />
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 font-medium tabular-nums">
-                      <Link href={detailHref} className="transition-colors group-hover:text-brand">
+                      <Link href={detailHref} tabIndex={-1} className="transition-colors group-hover:text-brand">
                         #{r.n}
                       </Link>
                     </td>
@@ -362,7 +350,7 @@ export function PipelineView({
                     </td>
                   <td className="px-4 py-3 text-muted">
                     <div className="flex items-center gap-2">
-                      <Link href={detailHref}>{r.role}</Link>
+                      <Link href={detailHref} tabIndex={-1}>{r.role}</Link>
                       {posting && (
                         <a
                           href={posting}

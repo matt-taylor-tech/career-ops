@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { matchCandidates, classifyReply } from './reply-matcher.mjs';
 import { resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
 import {
-  openTrackerTransaction, rebuildRow, resolveTrackerPath, loadCanonicalStates,
+  openTrackerTransaction, rebuildRow, resolveTrackerPath, loadCanonicalStates, appendLedgerRows,
 } from './tracker-utils.mjs';
 import { readReplyProposals, hasProposalReceipt } from './lib/reply-proposals.mjs';
 import { getCareerOpsRoot } from './path-resolver.mjs';
@@ -401,7 +401,7 @@ async function main() {
           if (u) {
             const line = `${num}\t${todayStr}\t${u.oldStatus}\t${u.newStatus}\treply-watch\t\n`;
             try {
-              fs.appendFileSync(statusLogFile, line, 'utf-8');
+              appendLedgerRows(statusLogFile, line);
             } catch (err) {
               console.warn(`Warning: failed to append to status-log.tsv for #${num}: ${err.message}`);
             }

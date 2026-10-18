@@ -21,9 +21,8 @@
  */
 
 import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { dirname } from 'path';
 import { getCareerOpsRoot, resolveTrackerPath } from './path-resolver.mjs';
-import { openTrackerTransaction, findDeadReportLink } from './tracker-utils.mjs';
+import { openTrackerTransaction, findDeadReportLink, trackerLinkDirsFor } from './tracker-utils.mjs';
 import { resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
 import { validateFlags } from './lib/cli-flags.mjs';
 import { isMainModule } from './lib/is-main-module.mjs';
@@ -38,7 +37,7 @@ const SINGLE_LINK_RE = /^\[[^\]]*\]\([^)]+\)$/;
  * Pure: touches no files. Exported so tests can call it directly.
  *
  * @param {string[]} lines - Tracker content split on '\n' (a CR stays on its line).
- * @param {string} trackerDir - Directory containing the tracker file.
+ * @param {string|string[]} trackerDir - Directory (or directories, see trackerLinkDirsFor) containing the tracker file.
  * @param {string} dataRoot - Data root.
  * @param {{stat?: Function}} [options] - Test seam for filesystem inspection.
  * @returns {{lines: string[], changed: object[], skipped: object[], inspectionErrors: object[], hasReportColumn: boolean}}
@@ -142,7 +141,7 @@ if (!DRY_RUN) {
 }
 try {
 const content = trackerTransaction ? trackerTransaction.read() : readFileSync(APPS_FILE, 'utf-8');
-const result = fixReportLinks(content.split('\n'), dirname(APPS_FILE), CAREER_OPS);
+const result = fixReportLinks(content.split('\n'), trackerLinkDirsFor(CAREER_OPS), CAREER_OPS);
 
 if (!result.hasReportColumn) {
   console.log('The tracker has no Report column. Nothing to fix.');

@@ -59,6 +59,7 @@ try {
   git(dataRoot, 'init', '-q');
   git(dataRoot, 'config', 'user.email', 'test@example.com');
   git(dataRoot, 'config', 'user.name', 'Test');
+  git(dataRoot, 'config', 'core.hooksPath', join(dataRoot, 'no-such-hooks'));
   writeFileSync(join(dataRoot, 'stray.md.bak'), 'a data-root backup that is not the code checkout\n', 'utf-8');
   git(dataRoot, 'add', 'stray.md.bak');
   git(dataRoot, 'commit', '-q', '-m', 'tracked backup living in the data root only');

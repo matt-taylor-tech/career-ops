@@ -59,24 +59,44 @@
 # An employer can publish one requisition in more than one language (for
 # example German and English), with the same title and location in each. By
 # default those are ONE role and the scan keeps whichever version the ATS
-# returned first.
+# returned first — usually the posting's default language; to choose which
+# version that is, see preferred_languages below.
 #
-# Set dedup_include_language: true to keep them apart when the ATS reports each
-# posting's language. Turn it on when you only apply to postings written in some
-# languages and discard the rest (for example, skip every JD written in German):
-# otherwise the version the scan kept may be the one you throw away.
-# Regional variants count as one language (en-GB equals en), and a posting whose
-# language the ATS doesn't report is compared as before.
+# Set dedup_include_language: true when you read several languages and want
+# every version of a posting, each as its own row. Regional variants count as
+# one language (en-GB equals en), and a posting whose language the ATS doesn't
+# report is compared as before.
 #
 # Some ATSes (Personio, Recruitee) serve every language version of a posting
-# under one URL. With the switch off they return each posting once, in its own
-# default language; with it on they return every version — Personio at one
-# extra request per further language, Recruitee from the response it already
-# fetches. A `?language=xx` on a Personio careers_url asks for that language
-# instead of the default wherever a posting has it.
+# under one URL. With the switch off they return each posting in its own
+# default language only (plus the preferred_languages versions, below, of
+# which the scan still keeps one); with it on they return every version —
+# Personio at one extra request per further language (at most 5), Recruitee from the
+# response it already fetches.
 #
 # scan_history:
 #   dedup_include_language: true
+
+# -- Preferred posting languages (optional) --
+# The languages you want a posting in, best first: an order of preference,
+# not a filter. Where a posting has versions in some of them, the scan keeps
+# the one in the language that comes first in this list; otherwise it keeps
+# the default one, as before. It never drops a posting: one with no version
+# in these languages still comes back in its default language. Use it when you
+# apply in some languages and discard the rest (for example, you skip JDs
+# written in German): you get the English version of a posting that has one,
+# and still one row per posting, however many languages you list. With
+# dedup_include_language on as well, every version is kept, in every
+# language, and the preferred ones come first. Regional variants count as one
+# language (en-GB equals en).
+#
+# Personio fetches one more careers page per preferred language some posting
+# has (at most 5); Recruitee needs no extra request. To set the language of one company only, put the
+# ATS's own language param on its careers_url — `?language=xx` on Personio,
+# `?lang=xx` on Recruitee; with dedup_include_language off it overrides this
+# list for that entry, and with it on every version comes back anyway.
+#
+# preferred_languages: [en]
 
 # -- Interamt.de searches (optional, German public sector) --
 # Read by scan-interamt.mjs (`npm run scan:interamt`), a separate Playwright
@@ -1203,6 +1223,7 @@ search_queries:
 #                   recruiting.ultipro.(ca|com) / recruiting2/3.ultipro.com variants, matched by pattern —
 #                   whichever host the tenant's own board URL uses is preserved, not normalized)
 #   adp-workforcenow  workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?cid=...&ccId=...
+#   zoho-recruit    <tenant>.zohorecruit.com  (any path; the board is always read from /jobs/Careers)
 #
 # When the public careers URL is a branded custom domain (e.g.
 # careers.adyen.com), set `provider: smartrecruiters` explicitly to
@@ -1326,16 +1347,19 @@ search_queries:
 #   careers_url: https://apply.workable.com/exampleco   # any apply.workable.com/<slug> host
 #   enabled: true
 #
-# - name: Example Recruitee Co
-#   careers_url: https://exampleco.recruitee.com         # any *.recruitee.com host
-#   enabled: true
-#
 # - name: Example ADP Workforce Now Co
 #   careers_url: https://workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?cid=00000000-0000-0000-0000-000000000000&ccId=19000101_000001
 #   max_pages: 100          # optional page cap (20 jobs/page, default 100, max 1500)
 #   adpWorkforcenow:
 #     fetchDetails: true    # optional: fetch each posting's detail JSON for a description (off by default — the list payload carries no JD text)
 #     detailLimit: 25       # optional: max detail calls per sweep when fetchDetails is true
+#   enabled: true
+#
+# - name: Example Zoho Recruit Co
+#   careers_url: https://exampleco.zohorecruit.com/jobs/Careers   # any <tenant>.zohorecruit.com URL
+#   zohoRecruit:
+#     fetchDetails: false   # optional: fetch each posting's page for its full description, date and salary (one extra request per posting)
+#     detailLimit: 25       # optional: max detail fetches per sweep when fetchDetails is true (max 100)
 #   enabled: true
 
 #
@@ -1910,12 +1934,29 @@ search_queries:
 #
 # Personio (common across DACH/EU) auto-detects from its careers host and
 # reads the public no-auth careers page (XML feed at /xml as the fallback).
-# Postings come back in their own default language; add ?language=<code> to
-# careers_url to prefer another one where a posting has it — e.g.:
+# Postings come back in their own default language; to get them in another
+# language wherever a posting has one, set the top-level preferred_languages
+# (see "Preferred posting languages" above) rather than a per-entry param:
 #
 #   - name: Example GmbH
-#     careers_url: https://example-gmbh.jobs.personio.de/?language=en
+#     careers_url: https://example-gmbh.jobs.personio.de/
 #     enabled: true
+#
+# A ?language=<code> on one careers_url overrides preferred_languages for that
+# entry only (with dedup_include_language off).
+#
+# Recruitee auto-detects from a <slug>.recruitee.com careers host and reads the
+# public no-auth offers API. Offers come back in their own default language;
+# to get them in another language wherever an offer has one, set the top-level
+# preferred_languages (see "Preferred posting languages" above) rather than a
+# per-entry param:
+#
+#   - name: Example Recruitee Co
+#     careers_url: https://exampleco.recruitee.com
+#     enabled: true
+#
+# A ?lang=<code> on one careers_url overrides preferred_languages for that
+# entry only (with dedup_include_language off).
 #
 # Teamtailor auto-detects from a <slug>.teamtailor.com careers host and reads
 # the public no-auth /jobs.rss feed — e.g.:
@@ -2375,7 +2416,12 @@ tracked_companies:
 
   - name: Channable
     careers_url: https://channable.recruitee.com
-    notes: "Utrecht. Product feed management for e-commerce. Recruitee board."
+    notes: "Utrecht. Product feed management for e-commerce."
+    enabled: true
+
+  - name: Shiji Group
+    careers_url: https://shijigroup.zohorecruit.com/jobs/Careers
+    notes: "Katowice / Barcelona. International hubs of a Beijing-based hospitality technology group."
     enabled: true
 
   # -- DACH & European AI ecosystem --
@@ -3258,7 +3304,7 @@ job_boards:
     searchKeywords: "data scientist"
     searchLocation: "Jakarta"
     pageSize: 30
-    maxPages: 3
+    # max_pages: 100                   # optional (default 100, hard max 500); warns if truncated
     enabled: false
     notes: "Indonesia's largest job board (SEEK group). Uses SEEK v5 JobSearch API — zero tokens."
 

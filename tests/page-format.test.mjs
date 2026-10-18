@@ -35,6 +35,7 @@ import {
   normalizePageFormat,
   resolvePageFormat,
 } from '../lib/page-format.mjs';
+import { describeSpawn, exitedNonZero } from './helpers/describe-spawn.mjs';
 
 /** A throwaway workspace whose config/profile.yml states `pageFormat`, or none. */
 function workspace(pageFormat) {
@@ -224,7 +225,7 @@ test('generate-pdf: an unrecognized --format is still a hard error', () => {
     env: workspaceEnv(dir),
     encoding: 'utf-8',
   });
-  assert.notEqual(res.status, 0);
+  assert.ok(exitedNonZero(res), describeSpawn(res, 'expected a non-zero exit'));
   assert.match(res.stderr, /Invalid format "legal"/);
 });
 

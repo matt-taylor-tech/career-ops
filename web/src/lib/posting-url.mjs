@@ -109,15 +109,29 @@ function firstHttpMarkdownTarget(value) {
 export function readTrackerUrl(cell) {
   const value = String(cell ?? "").trim();
   if (!value) return "";
+  // A value that is already a URL was extracted before (tracker-table.mjs
+  // applies this reader to r.url). Parsing it again could pick up a link
+  // nested inside its path and swap in a different posting.
+  if (isBareHttpUrl(value)) return value;
   return firstHttpMarkdownTarget(value) ?? value;
 }
 
-/** Href from a tracker URL cell. Empty when the cell is not an http(s) URL. */
+/** True when the value starts with an http(s) scheme. */
+function isBareHttpUrl(value) {
+  return /^https?:\/\//i.test(value);
+}
+
+/**
+ * Href from a tracker URL cell. Empty when the cell is not an http(s) URL.
+ * A bare URL stops at the first space, so trailing text is dropped. A link
+ * destination is kept whole, since an escaped space or a space inside
+ * balanced parentheses is part of it.
+ */
 export function postingHref(cell) {
-  const value = readTrackerUrl(cell);
+  const value = String(cell ?? "").trim();
   if (!value || value === "—" || value === "-") return "";
-  if (/^https?:\/\//i.test(value)) return value.split(/\s/)[0];
-  return "";
+  if (isBareHttpUrl(value)) return value.split(/\s/)[0];
+  return firstHttpMarkdownTarget(value) ?? "";
 }
 
 /** Short label for a posting link. The host, without a leading www. */

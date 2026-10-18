@@ -141,3 +141,13 @@ test("pdf cannot reach the network on either runtime", () => {
     assert.ok(!allowed.includes(tool), `pdf must not be granted ${tool}`);
   }
 });
+
+test("cover drafts with web research but writes nothing", () => {
+  // Given cover.md Step 3 runs web searches and slug mode re-reads the posting url
+  const caps = capabilitiesFor("cover");
+
+  // Then it fetches like research and never holds a write tool
+  assert.equal(caps, CAPS.networkReadOnly);
+  assert.equal(grantsWriteCapability(toolScopeFor("cover")), false);
+  assert.ok(KNOWN_KINDS.includes("cover"), "guards that iterate KNOWN_KINDS must reach cover");
+});

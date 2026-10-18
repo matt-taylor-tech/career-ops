@@ -20,7 +20,7 @@
  *   node upgrade-tests.mjs --user-layer-refusal # a user-layer manifest entry is refused,
  *                                        # the update completes, rollback leaves it alone
  */
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { createHash } from 'crypto';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync, realpathSync } from 'fs';
 import { tmpdir } from 'os';
@@ -35,6 +35,10 @@ const CANONICAL = 'https://github.com/career-ops-hq/career-ops.git';
 // fetches the old address; both must resolve to the local mirror or an
 // upgrade-from-old-tag scenario silently reaches the real network.
 const CANONICAL_LEGACY = 'https://github.com/santifer/career-ops.git';
+const GITHUB_API_HOST = 'api.github.com';
+// What apply() prints when its cross-check against the GitHub ref API gets no
+// answer, so a leg can tell that the API stayed out of reach (see runLeg).
+const REF_API_UNREACHED = 'could not reach the GitHub ref API';
 const TAG_RE = /^career-ops-v(\d+)\.(\d+)\.(\d+)$/;
 
 function git(cwd, ...args) {
@@ -69,6 +73,11 @@ function writeGitConfig(work, mirror) {
   const cfg = join(work, 'gitconfig');
   const url = pathToFileURL(mirror).href;
   writeFileSync(cfg, `[user]\n\tname = upgrade-tests\n\temail = upgrade-tests@career-ops.test\n[url "${url}"]\n\tinsteadOf = ${CANONICAL}\n\tinsteadOf = ${CANONICAL_LEGACY}\n[safe]\n\tdirectory = *\n`);
+  // Read by curl through CURL_HOME (see hermeticEnv): sends api.github.com to a
+  // closed local port, so the ref API cannot answer. Only that host, and only
+  // curl: apply() also runs npm, which the leg needs and which curl config
+  // never reaches.
+  writeFileSync(join(work, '.curlrc'), `connect-to = "${GITHUB_API_HOST}:443:127.0.0.1:9"\n`);
   return cfg;
 }
 
@@ -106,6 +115,17 @@ function hermeticEnv(cfg) {
     // Production behaviour is untouched: this pins the harness, not
     // resolveTargetRef().
     CAREER_OPS_UPDATE_CHANNEL: 'main',
+    // The 'main' channel still curls. #3805 made apply() read main's SHA from
+    // the GitHub ref API and refuse a target that does not descend from it.
+    // The mirror's main is the commit under test, so once real main moves on
+    // during a run (any merge elsewhere) the old install's apply() refuses the
+    // PR with "does not descend from upstream main" and the gate goes RED on a
+    // change that has nothing to do with it. That check is the old install's
+    // own code, so no change to update-system.mjs can stop it here; only the
+    // environment can. With the API unreachable, apply() prints its "could not
+    // be cross-checked" note and goes on, which is the answer that is true of
+    // a mirror: there is no upstream to compare the target with.
+    CURL_HOME: dirname(cfg),
   };
 }
 
@@ -211,19 +231,29 @@ export function runLeg({ oldTag, targetSha, label = oldTag, mutateMirror = null,
       .filter((p) => { try { git(mirror, 'cat-file', '-e', `${oldTag}:${p}`); return false; } catch { return true; } })
       .filter((p) => { try { git(mirror, 'cat-file', '-e', `${targetSha}:${p}`); return true; } catch { return false; } });
 
-    let exitCode = 0, output = '';
-    try {
-      // The fixture is an explicit installation acceptance test, so pass the
-      // same confirmation a user would provide after reviewing the preview.
-      output = execFileSync(process.execPath, ['update-system.mjs', 'apply', '--confirm'], {
-        cwd: install, encoding: 'utf-8', timeout: 300000,
-        env: { ...hermeticEnv(cfg), CAREER_OPS_UPDATE_CONFIRM: '1' },
-      });
-    } catch (e) { exitCode = e.status ?? 1; output = `${e.stdout ?? ''}${e.stderr ?? ''}`; }
+    // The updater that runs first and makes the cross-check is the old install's.
+    const oldUpdater = git(mirror, 'show', `${oldTag}:update-system.mjs`);
+    // The fixture is an explicit installation acceptance test, so pass the
+    // same confirmation a user would provide after reviewing the preview.
+    // spawnSync rather than execFileSync: the cross-check note below goes to
+    // stderr, which execFileSync drops when the run succeeds.
+    const run = spawnSync(process.execPath, ['update-system.mjs', 'apply', '--confirm'], {
+      cwd: install, encoding: 'utf-8', timeout: 300000,
+      env: { ...hermeticEnv(cfg), CAREER_OPS_UPDATE_CONFIRM: '1' },
+    });
+    const exitCode = run.status ?? 1;
+    const output = `${run.stdout ?? ''}${run.stderr ?? ''}${run.error ? `\n${run.error.message}` : ''}`;
 
     // Ordered assertions — user-layer manifest BEFORE any repo script runs
     // (doctor's autoCopy writes user-layer files).
     ok(exitCode === 0, `apply exits 0 (got ${exitCode})`);
+    // Proof that the ref API was out of reach, from an install whose apply()
+    // asks it at all (#3805 onwards). If curl ever stops reading CURL_HOME, or
+    // the API moves to another host, this fails on every run, instead of the
+    // gate going RED only on the runs where main happened to move.
+    if (oldUpdater.includes(REF_API_UNREACHED)) {
+      ok(output.includes(REF_API_UNREACHED), `the GitHub ref API stayed out of reach (apply printed "${REF_API_UNREACHED}")`);
+    }
     let installOracle = null;
     try { installOracle = git(install, 'rev-parse', `HEAD:${oracle}`); } catch { /* leave null */ }
     ok(installOracle === oracleBlob, `upgrade executed: ${oracle} blob matches target (non-vacuity oracle)`);

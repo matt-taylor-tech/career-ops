@@ -29,6 +29,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { describeSpawn } from './helpers/describe-spawn.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -155,7 +156,7 @@ test('tracker.mjs dates its status events with the local day', async () => {
       const rows = db.prepare('SELECT date FROM status_events').all();
       process.stdout.write(JSON.stringify(rows.map(r => r.date)));
     `], { encoding: 'utf-8', timeout: 30_000 });
-    assert.equal(q.status, 0, `could not read status_events: ${q.stderr}`);
+    assert.equal(q.status, 0, describeSpawn(q, `could not read status_events`));
     const dates = JSON.parse(q.stdout);
     assert.ok(
       !dates.includes(UTC_DAY),

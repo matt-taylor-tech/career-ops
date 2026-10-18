@@ -29,8 +29,8 @@ All scripts live in the project root as `.mjs` modules. Most are exposed via
 | `npm run liveness` | `check-liveness.mjs` | Test if job URLs are still active |
 | `node check-liveness.mjs --tracker [--status=Evaluated,Applied]` | `check-liveness.mjs` | Check the postings of open tracker rows (`Evaluated` and `Applied` by default). Each row's posting is its URL cell or its report's `**URL:**`. Rows with neither are listed by number |
 | `node check-liveness.mjs --tracker --discard-expired [--apply]` | `check-liveness.mjs` | Check the postings of Evaluated and Applied tracker rows, then move Evaluated rows whose posting is `expired` to Discarded with the note `posting closed YYYY-MM-DD`. Without `--apply` it is a dry run. Uncertain verdicts and Applied rows stay as they are |
-| `npm run extract` | `browser-extract.mjs` | Headless read-only page extractor (opt-in `scan.extractor: cli`) — compact JSON for scan/JD; Greenhouse, Lever, Ashby and Workday postings are read from their public JSON endpoints instead of the client-rendered page, and an empty jd extraction exits 1 with `code: empty_text` |
-| `node fetch-jd.mjs <url>` | `fetch-jd.mjs` | JD text on stdout from a known ATS API (Greenhouse/Lever/Ashby/Workday) — exit 1 with empty stdout when the host has no JD-bearing API, so a caller falls back to its browser/WebFetch path |
+| `npm run extract` | `browser-extract.mjs` | Headless read-only page extractor (opt-in `scan.extractor: cli`) — compact JSON for scan/JD; a posting whose ATS is in `JD_TEXT_API_ATS` (`liveness-api.mjs`) is first read without a browser, falling back to the page when that read is inconclusive, and an empty jd extraction exits 1 with `code: empty_text` |
+| `node fetch-jd.mjs <url>` | `fetch-jd.mjs` | JD text on stdout, read without a browser, for a posting whose ATS is in `JD_TEXT_API_ATS` (`liveness-api.mjs`) — exit 1 with empty stdout for any other ATS and for an inconclusive read, so a caller falls back to its browser/WebFetch path |
 | `npm run scan` | `scan.mjs` | Zero-token portal scanner |
 | `npm run scan:full` | `scan-ats-full.mjs` | Reverse ATS discovery scanner |
 | `node web/scripts/scheduled-jobs-runner.mjs` | `web/scripts/scheduled-jobs-runner.mjs` | Run one due local scheduled scan (normally invoked by Task Scheduler) |
@@ -42,6 +42,7 @@ All scripts live in the project root as `.mjs` modules. Most are exposed via
 | `npm run invite-match` | `invite-match.mjs` | Fuzzy-match a pasted interview-invite email against `data/applications.md` |
 | `npm run application:init` | `application-artifacts.mjs` | Initialize one versioned application-scoped JD/CV/PDF artifact bundle |
 | `npm run paste-reply` | `paste-reply.mjs` | Manual/no-Gmail input into the `reply-watch.mjs` classification pipeline |
+| `npm run closing-soon` | `closing-soon.mjs` | List tracker rows whose Notes (or matching `jds/` capture) carry a closing date within N days, plus separate `overdue` and `unparsed` groups (read-only) |
 | `npm run freshness` | `check-table-freshness.mjs` | Staleness validator for jurisdiction data tables (`as_of` / `next_effective` watchdog) |
 | `npm run jd-archive` | `check-jd-archive.mjs` | Validate every `reports/*.md` has an archived JD (embedded section or `jds/` capture) — flags `missing-jd-archive` |
 | `npm run openai:tailor` | `openai-tailor.mjs` | Tailor a CV via any OpenAI-compatible endpoint (headless companion to `openai-eval.mjs`) |
@@ -537,6 +538,45 @@ tracker row, so a contact cannot be attached across companies.
 
 ---
 
+## github-evidence
+
+Optional GitHub evidence step of the `expand` mode (#5295). Reads the pull
+requests you authored through your existing `gh auth` (no new token) and checks
+what `cv.md` claims against them. Read-only, metadata only (PR title, state,
+repository, stars, visibility); it never reads source code and never writes
+`cv.md`. Candidates reach `cv.md` only through `expand`'s confirm gate and
+`add-entry.mjs`.
+
+```bash
+node github-evidence.mjs          # writes output/github-evidence-{date}.{md,json}
+node github-evidence.mjs --json   # same, and prints the JSON on stdout
+```
+
+- Only PRs you authored count. Your own repos (owning is not authorship) and
+  forks are listed by name and count only, never as evidence.
+- A private repo is evidence only when listed in `config/profile.yml`:
+  `github_evidence.private_allowlist: ["owner/repo"]` (empty by default). Any
+  other private repo, or one whose visibility could not be read, appears by
+  name and count only, never with PR titles.
+- `claimCheck.mergedNotNamed`: third-party repos with merged PRs that `cv.md`
+  does not name. `claimCheck.namedNoMerge`: repos `cv.md` names where you have
+  no merged PR. Matching is literal and case-insensitive (`owner/repo`, then
+  the repo name, then the owner), and each row says which one matched.
+- GitHub search returns at most 1000 results per query; the `truncated` flags
+  say when a list may be incomplete.
+
+**Exit codes:** `0` report written, `1` usage error or `candidate.github`
+missing/malformed (normalized as in `expand`'s Input step, so a repo link such
+as `github.com/janesmith/tool` is malformed), `2` a GitHub query failed (nothing written), `3` `gh` not
+installed or not logged in (nothing written; with `--json`, stdout carries
+`{"status":"gh-unavailable","reason":...}`). Only an auth error from `gh`
+counts as not logged in: a login check that fails any other way (no stderr,
+`gh` crashed or was killed) is a `2` naming the exit status. On exit `2` or
+`3`, `expand` continues with its zero-key behaviour; on exit `1` it asks the
+user to fix `candidate.github` (its Input steps 2–4).
+
+---
+
 ## weekly-digest
 
 Rolls up `interview-prep/sessions/*.md` — the structured, machine-readable transcripts `interview/debrief` and `interview/practice` already write (schema in `interview-prep/sessions/README.md`) — into a single digest for a date range (default: the current ISO week, Monday–Sunday). Groups sessions by company/role into a per-company round rollup (round type + date per round), counts `<!-- competency: tag[, tag...] -->` annotations across all sessions in range and flags any tag appearing 2+ times as recurring, and — best-effort, since `interview-prep/question-bank.md` has no fixed schema — attributes 🔴-tagged lines to whichever in-range company's heading they fall under. Purely mechanical: front-matter parsing, date filtering, and tag counting, no LLM judgment calls.
@@ -615,6 +655,24 @@ node rejection-latency.mjs --self-test
 ```
 
 **Exit codes:** `0` always (missing data files produce an explanatory empty result), `1` self-test failure.
+
+---
+
+## closing-soon
+
+Surfaces tracker rows whose posting is about to close. Posting closing dates have no structured home, so people type them into Notes (`closes 2026-10-22`, `deadline Nov 4`); this script reads them and lists the rows closing within `--within N` days (default 7), soonest first. Dates are recognized only after a marker (`closes`, `closing date`, `closing`, `deadline`, `apply by`): ISO `2026-10-22`, `Mon D, YYYY`, `Mon D` (this year, or next year when it passed more than 60 days ago) and `MM/DD/YYYY` only when unambiguous. Anything else after a marker (`04/05/2026`, `4 Nov 2026`, `TBD`) is listed under `unparsed` instead of being guessed. Rows already past their date go in a separate `overdue` group (most recently overdue first). When a row's Notes carry no marker at all, the `jds/` capture resolved by report number (`jd-capture.mjs`; text captures only) is read instead. Several dates in one row surface the earliest. Rows are filtered by `--status` (default `Evaluated`; any canonical state from `templates/states.yml`, comma-separated).
+
+Read-only and zero-LLM: the tracker is read once and parsed defensively through `tracker-parse.mjs`; nothing is written and no lock is taken, so a concurrent session rewriting the tracker cannot be disturbed. No tracker column or schema is involved.
+
+```bash
+node closing-soon.mjs                          # JSON (closingSoon, overdue, unparsed)
+node closing-soon.mjs --summary                # human-readable table
+node closing-soon.mjs --within 14 --status Evaluated,Applied
+node closing-soon.mjs --today 2026-10-17       # deterministic runs/tests
+node closing-soon.mjs --tracker path/to/applications.md --jds path/to/jds
+```
+
+**Exit codes:** `0` on a report (a missing tracker yields an empty result with a warning), `1` unrecognized flag, `2` invalid `--today` / `--within` / `--status` value.
 
 ---
 
@@ -740,7 +798,9 @@ The location component is the canonical **set** of the places a posting names, n
 
 When a provider reads the employer's requisition id from a dedicated ATS field (`Job.requisitionId`, e.g. SmartRecruiters `refNumber`), company+role dedup uses it the way it uses a Workday requisition: two postings with one title but different requisitions stay two entries, while an unknown requisition on either side keeps the duplicate. The id is recorded in scan-history (`requisition_id`), and tracker and pipeline rows pick it up from the scan-history row with the same URL, so the check also holds across runs.
 
-`scan_history.dedup_include_language` (optional, opt-in, default off) keeps language versions of one posting apart. An employer can publish one requisition in more than one language (for example German and English) with the same title and location in each; off, the scan keeps whichever version the ATS returned first. On, two postings whose languages are both known (`Job.language`, recorded in scan-history's `language` column) and differ are not duplicates. A language code is reduced to its canonical language subtag with `Intl.Locale`, so `en-GB`, `en-US` and `en` are one language and so are `deu` and `de`; anything that isn't a language tag, such as a display name, is compared whole, ignoring case. Turn it on when you only apply to postings in some languages and discard the rest: the discarded version may otherwise be the one the scan kept. An unknown language on either side keeps the duplicate, so a provider that doesn't report a language behaves exactly as before. Where an ATS serves every version of a posting at one URL that differs only by a `language` / `lang` / `locale` param (Personio, Recruitee), the URL check is language-aware too: a seen row's language is its scan-history `language` column, else the param on its URL, else the version of this scan whose title matches the row's, else the posting's default-language version, which the provider returns first. While the switch is on, Personio requests the default careers page plus one page per further language, at most five per tenant, and skips any languages past that cap with a warning; while it is off, it returns one version per posting (its default language, or the one a `?language=` on `careers_url` asks for). Recruitee carries every translation in the offers response it already fetches, so the switch adds no request there: on, every translation comes back, the default one first, except one with no title or with the same text as a version already returned; off, each offer's default-language version, or its top-level fields with no language when no translation matches them.
+`scan_history.dedup_include_language` (optional, opt-in, default off) keeps language versions of one posting apart. An employer can publish one requisition in more than one language (for example German and English) with the same title and location in each; off, the scan keeps whichever version the ATS returned first. On, two postings whose languages are both known (`Job.language`, recorded in scan-history's `language` column) and differ are not duplicates. A language code is reduced to its canonical language subtag with `Intl.Locale`, so `en-GB`, `en-US` and `en` are one language and so are `deu` and `de`; anything that isn't a language tag, such as a display name, is compared whole, ignoring case. Turn it on when you read several languages and want every version as its own row; to get one row per posting in the language you apply in, use `preferred_languages` (below). An unknown language on either side keeps the duplicate, so a provider that doesn't report a language behaves exactly as before. Where an ATS serves every version of a posting at one URL that differs only by a `language` / `lang` / `locale` param (Personio, Recruitee), the URL check is language-aware too: a seen row's language is its scan-history `language` column, else the param on its URL, else the version of this scan whose title matches the row's, else the posting's default-language version, which the provider returns first. While the switch is on, Personio requests the default careers page plus one page per further language, at most 5 per tenant, and skips any languages past that cap with a warning; while it is off, it returns one version per posting (its default language, or the one a `?language=` on `careers_url` asks for). Recruitee carries every translation in the offers response it already fetches, so the switch adds no request there: on, every translation comes back, the default one first, except one with no title or with the same text as a version already returned; off, each offer's default-language version (or the one a `?lang=` on `careers_url` asks for), or its top-level fields with no language when no translation matches them.
+
+`preferred_languages` (optional, top-level, a list of language codes, best first) picks the version of a posting the scan keeps. It is an order of preference, not a filter: it never drops a posting, and a posting with no version in these languages comes back in its default language as before. Before its filters, `scan.mjs` orders each provider's jobs so that versions in a preferred language come first, best first, and everything else keeps the provider's order. With `dedup_include_language` off, the scan keeps one version per posting, the first it meets, so it keeps the version in the language that comes first in the list where the posting has one, and the default version otherwise; that is one row per posting however many languages the list names. With `dedup_include_language` on, every version is kept, in every language, and the preferred ones come first. Codes are compared the same way as above (`en-GB` = `en`). The language-aware URL check still reads the provider's own order, so the default-language-first rule it relies on is unaffected. Providers receive the list as `ctx.preferredLanguageRank(code)`, and those that return versions selectively return the preferred ones too: Personio requests one more careers page per preferred language that some posting has, at most 5 per tenant (none when the entry has its own `?language=`), and with `dedup_include_language` it requests the preferred languages first, best first, so the same cap of 5 skips the other languages (with a warning) before it skips a preferred one; Recruitee returns the preferred translations from the response it already fetches (none when the entry has its own `?lang=`). Providers that already return every version, such as SmartRecruiters, need nothing more. A version the scan's own dedup drops is counted under "Duplicates skipped" in the scan summary; a version the provider never returns, such as a Recruitee translation in a language that is not preferred, is not counted.
 
 For custom SSR pages, configure a tracked company with `scan_method: local_parser` and a `parser` block. The parser can be written in JavaScript, Python, or any language available as a local executable. Company-specific parsers usually already know their source URL and only need to print JSON jobs to stdout:
 
@@ -909,7 +969,7 @@ npm run company:funded -- --sources techcrunch,prnewswire,guardian,hn
 npm run company:funded -- --self-test
 ```
 
-Defaults: last 3 months, `--sort date`, sources `techcrunch,prnewswire,guardian,hn`. `--sort score` ranks by source and funding-detail confidence instead.
+Defaults: last 3 months, `--sort date`, sources `techcrunch,prnewswire,guardian,hn`. `siliconangle` is available opt-in via `--sources`. `--sort score` ranks by source and funding-detail confidence instead.
 
 Runs without `--dry-run` write JSON under `output/` and a Markdown report under `reports/`.
 
@@ -1166,6 +1226,14 @@ Action are listed on stderr as unreadable rather than silently dropped;
 `story-provenance-check.mjs` reports the same entries under `malformed`
 while still checking their figures.
 
+The answer is checked with that classifier before it prints, because it is
+meant to be pasted as-is. A story marked `**Provenance:** user-cannot-confirm`
+has every number in its answer, title and tags replaced with
+`[unconfirmed figure]`. In any other story, a figure that
+does not trace to `cv.md` gets a ⚠️ line naming it and its bucket
+(`derived-unverified` or `supportedByResume`), so you can confirm it before
+pasting.
+
 ---
 
 ## archive
@@ -1226,7 +1294,7 @@ These have no `npm run` binding — modes and agents call them with
 | `node agent-inbox.mjs add "..."` | Append a request to the queue the agent drains at the next session start |
 | `node agent-inbox.mjs list [--all]` | List pending (or all) queued items by stable number — gaps mean already resolved |
 | `node agent-inbox.mjs resolve <n> [--expect "..."] [--result "..."]` | Tick item `n` and stamp a one-line result; `--expect` aborts unless the item contains that substring |
-| `node generate-latex.mjs <input.tex> [output.pdf] [--compile-only] [--help]` | Validate and compile a generated `.tex` CV via tectonic or pdflatex; `--compile-only` skips career-ops template validation so a user-owned `.tex` compiles as-is (`latex-tex` mode) |
+| `node generate-latex.mjs <input.tex> [output.pdf] [--compile-only] [--source <path>] [--skip-fact-check] [--help]` | Fact-check, validate and compile a generated `.tex` CV via tectonic or pdflatex. The CV fact gate runs first whenever the data root has a `cv.md`, and a blocked document is not compiled; `--source` adds an evidence file (repeatable; `latex-tex` passes the user's own `.tex`). `--compile-only` skips career-ops template validation so a user-owned `.tex` compiles as-is (`latex-tex` mode) |
 | `node install-latex-engine.mjs [--check] [--force] [--json] [--help]` | Opt-in local LaTeX engine: downloads a pinned tectonic release for this platform, verifies its SHA-256 before extracting, and places it in the repo root (gitignored) where `generate-latex.mjs` looks first. Downloads are bounded by a timeout and a size cap. No-op when tectonic is already available (a pdflatex-only host still gets tectonic, which the CJK template needs); `--check` never downloads |
 | `node classify-tier.mjs` | Classify a job title into intern / entry / mid / senior |
 | `node ats-payload.mjs <payload.json> [--summary]` | ATS payload transform: folds `competencies[]` into `skills[]` (one safe, idempotent transform) and reports three judgement calls it deliberately does not apply. Payload on stdout, findings on stderr |

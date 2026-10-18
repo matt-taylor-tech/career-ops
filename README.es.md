@@ -20,7 +20,8 @@
   <a href="README.ar.md">العربية</a> |
   <a href="README.hi.md">हिन्दी</a> |
   <a href="README.tr.md">Türkçe</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
+  <a href="README.vi.md">Tiếng Việt</a> |
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <p align="center"><a href="https://career-ops.org/es/docs?utm_source=readme&utm_content=es">Documentación completa en español: career-ops.org/es/docs</a></p>
@@ -123,7 +124,11 @@ El silencio después de pulsar enviar no va contigo. Bastante gente vio lo mismo
 
 <br>
 
-La contratación no va a arreglarse sola. La gente que la sufre sí puede, y ya está en la sala, comparando notas y arreglándose los setups unos a otros. [Aquí es donde se escribe el arreglo](CONTRIBUTING.md). Una sala, no un club. **Construyámoslo juntos.**
+La contratación no va a arreglarse sola. La gente que la sufre sí puede, y ya está en la sala, comparando notas y arreglándose los setups unos a otros.
+
+<p align="center"><a href="CONTRIBUTING.md"><img src="https://warpchart.dev/api/builders?lang=es" alt="Muro animado con los avatares de GitHub de quienes contribuyen, que se llena por orden de llegada desde abril de 2026 y deja libre la siguiente casilla." width="100%"></a></p>
+
+[Aquí es donde se escribe el arreglo](CONTRIBUTING.md). Una sala, no un club. **Construyámoslo juntos.**
 
 <p align="center"><a href="https://discord.gg/8pRpHETxa4"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Fv10%2Finvites%2F8pRpHETxa4%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&label=Discord&suffix=%20members&color=5865F2&style=for-the-badge&labelColor=2b3137&logo=discord&logoColor=white" alt="Discord: recuento en vivo de miembros del servidor de career-ops"></a></p>
 
@@ -205,7 +210,7 @@ npx @santifer/career-ops init
 
 > 💡 `npx` viene con [Node.js](https://nodejs.org): ejecuta el instalador una vez,
 > sin instalar nada de forma global. ¿Aún no tienes Node? Instálalo primero.
-> (¿Ya usas un CLI de Claude Code / Gemini / Codex? Entonces ya lo tienes.)
+> (¿Ya usas un CLI de Claude Code / Codex? Entonces ya lo tienes.)
 
 Esto clona la última versión en `./career-ops` e instala las dependencias. Después:
 

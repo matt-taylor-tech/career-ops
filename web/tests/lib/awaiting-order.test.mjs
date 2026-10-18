@@ -137,3 +137,27 @@ test("an empty group is left out", () => {
     ["Not scored yet"],
   );
 });
+
+// #5300: the report page passes the posting's legitimacy to applyLineLabel, so
+// a flagged 4.5 reads "Check the posting first" there. Today has to agree, and
+// the row must stay on Today under that label rather than drop out because the
+// label is not one of the groups.
+test("a flagged posting above the line is not Recommended", () => {
+  const rows = [row("2026-08-04", "4.5/5"), row("2026-08-03", "4.5/5"), row("2026-08-02", "3.1/5")];
+  const legitimacy = { "2026-08-04": "Proceed with Caution", "2026-08-03": "High Confidence", "2026-08-02": "Suspicious" };
+  assert.deepEqual(
+    groupAwaiting(pickAwaitingDecision(rows, scoreOf), (r) => legitimacy[r.date]).map(([label, group]) => [label, group.map((r) => r.date)]),
+    [
+      ["Recommended", ["2026-08-03"]],
+      ["Check the posting first", ["2026-08-04"]],
+      ["Below the apply line", ["2026-08-02"]],
+    ],
+  );
+});
+
+test("without legitimacy, grouping is by score alone", () => {
+  assert.deepEqual(
+    groupAwaiting([row("2026-08-01", "4.5/5")]).map(([label]) => label),
+    ["Recommended"],
+  );
+});

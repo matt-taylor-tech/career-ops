@@ -20,7 +20,8 @@
   <a href="README.ar.md">العربية</a> |
   <a href="README.hi.md">हिन्दी</a> |
   <a href="README.tr.md">Türkçe</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
+  <a href="README.vi.md">Tiếng Việt</a> |
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <!-- The non-breaking spaces (&nbsp;) and word joiners (&#8288;) below decide where each line wraps on a phone. Keep them when editing. -->
@@ -121,7 +122,11 @@ npx @santifer/career-ops init
 
 <br>
 
-التوظيف لن يصلح نفسه بنفسه. من يمرّون به يستطيعون، وهم في الغرفة أصلًا، يقارنون ملاحظاتهم ويصلحون إعدادات بعضهم بعضًا. [هنا يُكتب الإصلاح](CONTRIBUTING.md). غرفة، لا نادٍ. **لنبنِ معًا.**
+التوظيف لن يصلح نفسه بنفسه. من يمرّون به يستطيعون، وهم في الغرفة أصلًا، يقارنون ملاحظاتهم ويصلحون إعدادات بعضهم بعضًا.
+
+<p align="center"><a href="CONTRIBUTING.md"><img src="https://warpchart.dev/api/builders?lang=ar" alt="جدار متحرك لصور المساهمين الرمزية على GitHub، يمتلئ بترتيب الوصول منذ أبريل 2026، مع ترك المربع التالي مفتوحًا." width="100%"></a></p>
+
+[هنا يُكتب الإصلاح](CONTRIBUTING.md). غرفة، لا نادٍ. **لنبنِ معًا.**
 
 <p align="center" dir="rtl"><a href="https://discord.gg/8pRpHETxa4"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Fv10%2Finvites%2F8pRpHETxa4%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&label=Discord&suffix=%20members&color=5865F2&style=for-the-badge&labelColor=2b3137&logo=discord&logoColor=white" alt="Discord: عدد أعضاء خادم career-ops مباشرة"></a></p>
 
@@ -203,7 +208,7 @@ npx @santifer/career-ops init
 
 > 💡 `npx` يأتي مع [Node.js](https://nodejs.org): يشغّل المثبّت مرة واحدة
 > دون تثبيت أي شيء بشكل عام. لا يوجد Node بعد؟ ثبّته أولًا.
-> (تستخدم بالفعل واجهة Claude Code / Gemini / Codex؟ إذن لديك بالفعل.)
+> (تستخدم بالفعل واجهة Claude Code / Codex؟ إذن لديك بالفعل.)
 
 يستنسخ هذا أحدث إصدار في `./career-ops` ويثبّت الاعتماديات. ثم:
 

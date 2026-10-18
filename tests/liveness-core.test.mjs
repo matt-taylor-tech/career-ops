@@ -183,6 +183,70 @@ closedVdab.result === 'expired' && closedVdab.code === 'expired_body'
   ? pass('VDAB "Deze vacature is niet meer gepubliceerd" -> expired, despite its "Solliciteer nu"')
   : fail(`closed VDAB vacancy classified ${closedVdab.result}/${closedVdab.code}, expected expired/expired_body`);
 
+console.log('\nliveness-core — the getManfred Apply control, and the date a closed posting shows');
+
+// getManfred labels Apply "¡Apúntame!" ("sign me up"); the walk reads the
+// control as "¡APÚNTAME! ¡Apúntame!". With no pattern for it, a live posting
+// read no_apply_control and scan --verify dropped it (#4832).
+const manfredUrl = 'https://www.getmanfred.com/ofertas-empleo/8510/renta-4-lead-oracle-backend-developer-oct26';
+const manfredBody = '¿Qué harás?\nDiseñarás y mantendrás los servicios backend de la plataforma de inversión.\n'.repeat(4);
+const manfredApply = classifyLiveness({
+  status: 200,
+  requestedUrl: manfredUrl,
+  finalUrl: manfredUrl,
+  bodyText: manfredBody,
+  applyControls: ['¿Puedo aplicar si vivo fuera de España?', 'COMPARTIR Compartir', '¡APÚNTAME! ¡Apúntame!'],
+});
+manfredApply.result === 'active' && manfredApply.code === 'apply_control_visible'
+  ? pass('"¡Apúntame!" marks a getManfred posting active')
+  : fail(`"¡Apúntame!" classified ${manfredApply.result}/${manfredApply.code}, expected active/apply_control_visible`);
+
+// Most getManfred postings, closed ones too, have an FAQ button such as
+// "¿Puedo aplicar si vivo fuera de España?". The pattern reads "apúntame", not
+// the verb "aplicar", so that button alone is not an Apply control.
+const manfredFaq = classifyLiveness({
+  status: 200,
+  requestedUrl: manfredUrl,
+  finalUrl: manfredUrl,
+  bodyText: manfredBody,
+  applyControls: ['¿Puedo aplicar si vivo fuera de España?', 'OTRAS OFERTAS Otras ofertas'],
+});
+manfredFaq.result === 'uncertain' && manfredFaq.code === 'no_apply_control'
+  ? pass('the "¿Puedo aplicar...?" FAQ button is not an Apply control')
+  : fail(`the FAQ button alone classified ${manfredFaq.result}/${manfredFaq.code}, expected uncertain/no_apply_control`);
+
+// A closed getManfred posting stays up without its Apply button, and says
+// above the title when it closed. It read no_apply_control, so check-liveness
+// reported it uncertain instead of expired.
+const closedManfredUrl = 'https://www.getmanfred.com/ofertas-empleo/2649/cabify-principal-software-engineer-oct23';
+const closedManfred = classifyLiveness({
+  status: 200,
+  requestedUrl: closedManfredUrl,
+  finalUrl: closedManfredUrl,
+  bodyText: `Oferta cerrada el 26/12/2023\nPrincipal Software Engineer\n${manfredBody}Oferta cerrada\nEsta oferta ya está cerrada, ¡pero tenemos muchas más!\nVER OTRAS OFERTAS`,
+  applyControls: ['¿Puedo aplicar si vivo fuera de España?', 'OTRAS OFERTAS Otras ofertas'],
+});
+closedManfred.result === 'expired' && closedManfred.code === 'expired_body'
+  ? pass('getManfred "Oferta cerrada el 26/12/2023" -> expired')
+  : fail(`closed getManfred posting classified ${closedManfred.result}/${closedManfred.code}, expected expired/expired_body`);
+
+// A posting written in English has its FAQ in English, and "Can I apply
+// regardless of where I live?" reads as an Apply control. Closed postings like
+// this one read active on the first poll, before the "Esta oferta ya está
+// cerrada" box near the end of the page had rendered. The date above the title
+// was already there, and a hard pattern is read before the Apply control.
+const closedEnglishUrl = 'https://www.getmanfred.com/ofertas-empleo/1922/grayhair-software-senior-java-developer-jun23';
+const closedEnglish = classifyLiveness({
+  status: 200,
+  requestedUrl: closedEnglishUrl,
+  finalUrl: closedEnglishUrl,
+  bodyText: `Oferta sólo disponible en Inglés\nOferta cerrada el 27/07/2023\nSenior Java Developer\n${'What will you do?\nYou will build and run the Java services behind the platform.\n'.repeat(4)}Can I apply regardless of where I live?\nOferta cerrada`,
+  applyControls: ['Can I apply regardless of where I live?', 'COMPARTIR Compartir'],
+});
+closedEnglish.result === 'expired' && closedEnglish.code === 'expired_body'
+  ? pass('a closed getManfred posting in English -> expired, despite its "Can I apply...?" FAQ button')
+  : fail(`closed getManfred posting in English classified ${closedEnglish.result}/${closedEnglish.code}, expected expired/expired_body`);
+
 console.log('\nliveness-core — role/position "is closed" and bare "Job Expired" banners classify as expired');
 
 // Reported on agentic-engineering-jobs.com (111 of 111 uncertain postings
@@ -510,3 +574,24 @@ closureVerdict("You can't view this job because it's not available at this time.
 closureVerdict('Salary data is not available at this time. Apply now.', ['Apply now']).result === 'active'
   ? pass('an availability mention on a live posting stays active')
   : fail('the new pattern over-triggered on a live posting');
+
+// ── isUnreadableVerdict: "body could not be read" is not "closed" (#5408) ────
+import { isUnreadableVerdict } from '../liveness-core.mjs';
+
+const unreadableProbe = classifyLiveness({
+  status: 200,
+  finalUrl: 'https://careers.example.com/job/123',
+  bodyText: 'Home Careers Contact',
+  applyControls: [],
+});
+isUnreadableVerdict(unreadableProbe)
+  ? pass('a nav/footer-only page (insufficient_content) is an unreadable verdict')
+  : fail('a nav/footer-only page was not flagged unreadable');
+
+isUnreadableVerdict({ result: 'expired', code: 'hard_expired' }) === false
+  && isUnreadableVerdict({ result: 'active' }) === false
+  && isUnreadableVerdict({ result: 'uncertain', code: 'bot_challenge' }) === false
+  && isUnreadableVerdict(null) === false
+  && isUnreadableVerdict(undefined) === false
+  ? pass('closed, active, other uncertain and missing verdicts are not unreadable')
+  : fail('isUnreadableVerdict over-matched a non-insufficient_content verdict');

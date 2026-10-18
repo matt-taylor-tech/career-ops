@@ -101,7 +101,7 @@ test('resolveTailoredCv: a multi-word company does NOT match a file whose first 
   });
 });
 
-test('generated CV uses the linked report identity when its application number differs', async () => {
+test('generated CV uses the linked report identity when its application number differs', async (t) => {
   await withFixture([], async (outputDir) => {
     const root = dirname(outputDir);
     mkdirSync(join(root, 'data'));
@@ -131,6 +131,15 @@ test('generated CV uses the linked report identity when its application number d
     // Supply only this fixture's path endpoints. Web CI installs web dependencies
     // alone; importing the full core here would require its separate packages.
     // The application, report and manifest lookups still use the real web code.
+    // pdf-index.ts loads tracker-utils.mjs from the code root (cwd/.. by
+    // default), so point that at the fixture too; withFixture cannot, since
+    // this is the only test that supplies a stub.
+    const prevCodeRoot = process.env.CAREER_OPS_CODE_ROOT;
+    process.env.CAREER_OPS_CODE_ROOT = root;
+    t.after(() => {
+      if (prevCodeRoot === undefined) delete process.env.CAREER_OPS_CODE_ROOT;
+      else process.env.CAREER_OPS_CODE_ROOT = prevCodeRoot;
+    });
     writeFileSync(join(root, 'tracker-utils.mjs'), [
       `export const resolveTrackerPath = () => ${JSON.stringify(join(root, 'data', 'applications.md'))};`,
       `export const resolvePdfIndexPath = () => ${JSON.stringify(join(root, 'data', 'pdf-index.tsv'))};`,
@@ -143,6 +152,7 @@ test('generated CV uses the linked report identity when its application number d
     ].join('\n'));
     assert.equal(await resolveTailoredCv(undefined, '309'), first.paths.finalPdf);
     assert.equal(await resolveTailoredCv(undefined, '310'), second.paths.finalPdf);
+    assert.equal(await resolveTailoredCv(undefined, '0309'), first.paths.finalPdf);
   });
 });
 

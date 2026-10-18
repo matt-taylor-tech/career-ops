@@ -145,6 +145,9 @@ const METRIC_NOUNS = [
   'staff', 'personnel', 'people', 'technicians', 'operators', 'contractors',
   'vendors', 'scientists', 'researchers', 'volunteers', 'students', 'patients',
   'crew',
+  // People a candidate mentored or hired: "Mentored 12 interns" against a
+  // source saying 3 passed, because none of these nouns was listed (#5348).
+  'interns', 'mentees', 'apprentices', 'hires',
   // Physical assets and scale, for the same reason.
   'facilities', 'sites', 'buildings', 'rooms', 'labs', 'laboratories', 'plants',
   'machines', 'devices', 'instruments', 'vehicles', 'units', 'locations',
@@ -301,11 +304,98 @@ const NOUN_SYNONYMS = new Map([
   ['werkzeuge', 'tools'],
   ['werkzeugen', 'tools'],
 ]);
+// One claim, however it is spelled (#5348). Each pattern below is a spelling of
+// a percentage, an amount of money or a multiplier, and canonicalMetric() folds
+// every match onto one key: `45 percent` / `45 per cent` / `45%` -> `45%`,
+// `USD 3M` / `3 million dollars` / `$3M` -> `$3m`, `10-fold` / `10x` -> `10x`.
+// With only the symbol spellings recognized, the same inflated figure blocked
+// as `45%` and passed as `45 percent`, so whether the gate caught a number
+// depended on wording an LLM rewriter picks freely.
+//
+// Currency codes are matched case-sensitively: lowercase "eur" or "gbp" in prose
+// is not a currency. A bare "pound(s)" is left out because it is also a weight.
+const MAGNITUDE_ALT = String.raw`(?:\s?(?:thousand|million|billion)\b|\s?[kKmMbB](?![\p{L}]))`;
 const SIMPLE_CLAIM_PATTERNS = [
-  /\b\d+(?:\.\d+)?\s?%/g,
-  /(?<![\w$€£])[$€£]\s?\d[\d,.]*(?:\s?[kKmMbB])?/g,
+  /\b\d+(?:\.\d+)?[^\S\n]?(?:%|(?:percent|per\s?cent|pct)\b)/gi,
+  new RegExp(String.raw`(?<![\w$€£])[$€£]\s?\d[\d,.]*(?:\s?(?:thousand|million|billion)\b|\s?[kKmMbB])?`, 'gu'),
+  new RegExp(String.raw`(?:\b(?:USD|EUR|GBP)|\bUS\$)\s?\d[\d,.]*${MAGNITUDE_ALT}?`, 'gu'),
+  new RegExp(String.raw`\b\d[\d,.]*${MAGNITUDE_ALT}?\s?-?\s?(?:(?:USD|EUR|GBP)\b|(?:[Dd]ollars?|[Ee]uros?)\b)`, 'gu'),
   /\b\d+(?:\.\d+)?\s?x\b/gi,
+  /\b\d+(?:\.\d+)?\s?-?\s?fold\b/gi,
 ];
+
+const CURRENCY_SYMBOLS = new Map([
+  ['$', '$'], ['us$', '$'], ['usd', '$'], ['dollar', '$'], ['dollars', '$'],
+  ['€', '€'], ['eur', '€'], ['euro', '€'], ['euros', '€'],
+  ['£', '£'], ['gbp', '£'],
+]);
+
+/**
+ * Fold one SIMPLE_CLAIM_PATTERNS match onto the key its other spellings share.
+ *
+ * Anything this does not recognize falls back to normalizeClaim, so an entry
+ * in allow_metrics written in an unusual spelling still compares the way it
+ * always did.
+ *
+ * @param {string} raw - the matched text
+ * @returns {string}
+ */
+function canonicalMetric(raw) {
+  const claim = normalizeClaim(raw);
+  const percent = /^(\d+(?:\.\d+)?) ?(?:%|percent|per ?cent|pct)$/.exec(claim);
+  if (percent) return `${percent[1]}%`;
+  const multiplier = /^(\d+(?:\.\d+)?) ?(?:x|-? ?fold)$/.exec(claim);
+  if (multiplier) return `${multiplier[1]}x`;
+  const amount = String.raw`(\d[\d.]*)(?: ?(thousand|million|billion|[kmb]))?`;
+  const lead = new RegExp(String.raw`^(\$|€|£|us\$|usd|eur|gbp) ?${amount}$`).exec(claim);
+  const trail = lead ? null : new RegExp(String.raw`^${amount} ?-? ?(usd|eur|gbp|dollars?|euros?)$`).exec(claim);
+  if (!lead && !trail) return claim;
+  const [symbol, number, magnitude] = lead ? [lead[1], lead[2], lead[3]] : [trail[3], trail[1], trail[2]];
+  const suffix = magnitude ? (SPELLED_MAGNITUDES.get(magnitude) ?? magnitude) : '';
+  return `${CURRENCY_SYMBOLS.get(symbol)}${number}${suffix}`;
+}
+
+// Spelled-out numbers, rewritten as digits before the claim patterns run, so
+// "Led forty engineers" and "Led 40 engineers" make the same claim (#5348).
+// Before, only the digit form was read, and a rewriter that spelled the
+// number out got an inflated headcount past the gate.
+//
+// "one" on its own is left alone: "one of the engineers" is not a count of
+// one engineer, and every count noun here is plural anyway. It is read only as
+// the start of "one hundred". The `-fold` multiplier is read for four and up,
+// because "a twofold approach" and "a threefold mission" are prose far more
+// often than they are metrics.
+const NUMBER_WORD_VALUES = new Map([
+  ['one', 1], ['two', 2], ['three', 3], ['four', 4], ['five', 5], ['six', 6], ['seven', 7], ['eight', 8], ['nine', 9],
+  ['ten', 10], ['eleven', 11], ['twelve', 12], ['thirteen', 13], ['fourteen', 14], ['fifteen', 15],
+  ['sixteen', 16], ['seventeen', 17], ['eighteen', 18], ['nineteen', 19],
+  ['twenty', 20], ['thirty', 30], ['forty', 40], ['fifty', 50], ['sixty', 60], ['seventy', 70],
+  ['eighty', 80], ['ninety', 90],
+]);
+const UNIT_WORDS = 'one|two|three|four|five|six|seven|eight|nine';
+const TENS_WORDS = 'twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety';
+const TEEN_WORDS = 'ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen';
+const SPELLED_NUMBER_RE = new RegExp(
+  String.raw`\b(?:(?<tens>${TENS_WORDS})(?:[-\s](?<tensUnit>${UNIT_WORDS}))?|(?<teen>${TEEN_WORDS})|(?<unit>two|three|four|five|six|seven|eight|nine)|(?<one>one)(?=\s+hundred\b))(?<hundred>\s+hundred)?\b`,
+  'gi',
+);
+const SPELLED_FOLD_RE = /\b(four|five|six|seven|eight|nine|ten|twenty|fifty|hundred|thousand)-?fold\b/gi;
+
+/** Rewrite spelled-out English numbers as digits, for metric extraction only. */
+function spellNumbers(text) {
+  return text
+    .replace(SPELLED_FOLD_RE, (_, word) => {
+      const lower = word.toLowerCase();
+      const value = lower === 'hundred' ? 100 : lower === 'thousand' ? 1000 : NUMBER_WORD_VALUES.get(lower);
+      return `${value}-fold`;
+    })
+    .replace(SPELLED_NUMBER_RE, (...args) => {
+      const groups = args.at(-1);
+      const word = (name) => NUMBER_WORD_VALUES.get(groups[name]?.toLowerCase()) ?? 0;
+      const value = word('tens') + word('tensUnit') + word('teen') + word('unit') + word('one');
+      return String(groups.hundred ? value * 100 : value);
+    });
+}
 
 /** Read a UTF-8 file when it exists, otherwise return an empty string. */
 function readIfExists(path) {
@@ -403,8 +493,28 @@ function decodeHtmlEntity(entity, decimal, hex, name, markup) {
   return char;
 }
 
+// Only the body of a LaTeX document is CV content. The preamble is package
+// names, lengths and macro definitions, and read as text it made claims of its
+// own: `\pdfgentounicode=1` above a `%%%%` banner was the metric "1%", and
+// the `0em` lengths outvoted a short CV's English in the language check
+// ("em" is Portuguese). Comments go too, since a comment runs from an
+// unescaped `%` to the end of the line. Only a LaTeX document is treated this
+// way: everywhere else `%` is a percent sign.
+const LATEX_DOCUMENT_RE = /\\documentclass\b|\\begin\{document\}/;
+const LATEX_COMMENT_RE = /(?<!\\)%.*$/gm;
+const LATEX_BODY_RE = /\\begin\{document\}([\s\S]*?)(?:\\end\{document\}|$)/;
+
+/** The body of a LaTeX document without its comments; any other text unchanged. */
+function latexBody(text) {
+  const raw = String(text);
+  if (!LATEX_DOCUMENT_RE.test(raw)) return raw;
+  const uncommented = raw.replace(LATEX_COMMENT_RE, '');
+  return LATEX_BODY_RE.exec(uncommented)?.[1] ?? uncommented;
+}
+
 /** Remove HTML, basic LaTeX commands, and excess whitespace from document text. */
 export function stripMarkup(text, { keepLineBreaks = false } = {}) {
+  text = latexBody(text);
   // An entity is the character it encodes, and a default-ignorable character
   // (zero-width space, joiner, soft hyphen, directional mark, variation
   // selector) renders as nothing. Both are resolved before anything else reads
@@ -436,6 +546,12 @@ export function stripMarkup(text, { keepLineBreaks = false } = {}) {
     .replace(/<\/?(?:li|p|div|tr|h[1-6]|section|article|ul|ol|table|br)\b[^>\n]*>/gi, '. ')
     .replace(/<\/?[a-zA-Z][^>\n]*>/g, ' ')
     .replace(/\\[a-zA-Z]+\*?(?:\[[^\]]*\])?(?:\{([^}]*)\})?/g, ' $1 ')
+    // An escaped special character is the character. LaTeX writes a percent
+    // sign as `\%` (and markdown allows the same escape), and the backslash
+    // broke the digit-percent adjacency the claim pattern needs, so every
+    // percentage in a .tex CV was invisible to the gate (#5348). `\&`, `\#`
+    // and `\_` matter to names: "R\&D", "C\#".
+    .replace(/\\([%$&#_])/g, '$1')
     // Markdown emphasis (`**bold**`, `__bold__`, `*italic*`) — the house style
     // used to bold nearly every metric in cv.md/article-digest.md. A closing
     // marker sitting directly against the number severed the number-noun
@@ -898,6 +1014,67 @@ export function factClaims(text, sourceNormalized = null) {
   // Report each claim once. Both tool patterns read most names, so without
   // this every tool would be listed twice. Repeated employer and title claims
   // collapse too, as they already did in verifyFacts.
+  const seen = new Set();
+  return claims.filter(({ kind, value }) => !seen.has(`${kind}\n${value}`) && seen.add(`${kind}\n${value}`));
+}
+
+// The fields the CV builders emit as structure rather than prose (#5348).
+// factClaims() reads an employer only after a prose trigger ("worked at",
+// "joined", "Company:"), and a built CV never phrases its employer that way: it
+// is a `job-company` span. So a payload that swapped the employer, the degree
+// or a certification rendered and passed the gate, which is the fabrication
+// AGENTS.md treats as most serious.
+//
+// Employer, education and certification fields BLOCK when no source contains
+// them. The job title only WARNS: cv-title-check.mjs is deliberately warn-only
+// about titles, because reframing one is sometimes the candidate's call, and a
+// second check that blocked on the same field would overrule that choice.
+// Skills lists are not read here. Rewording a skill into the posting's
+// vocabulary is the reformulation the tailoring is allowed to do.
+//
+// Templates with section partials (#2183) may use other class names, and a
+// markdown CV has no markup to read, so neither is covered.
+const STRUCTURED_HTML_FIELDS = [
+  ['job-company', 'employer', true],
+  ['edu-title', 'education', true],
+  ['edu-org', 'education', true],
+  ['cert-title', 'certification', true],
+  ['job-role', 'title', false],
+];
+// One level of nested braces, enough for `\textbf{...}` inside an argument.
+const LATEX_ARG = String.raw`\s*\{((?:[^{}]|\{[^{}]*\})*)\}`;
+// build-cv-latex.mjs writes `\resumeSubheading{organization}{…}{title or degree}{…}`
+// for both experience and education, so the first argument is an employer or
+// an institution and the third a role or a degree. The first blocks; the third
+// is read as a title and warns, for the reason given above.
+const LATEX_SUBHEADING_RE = new RegExp(String.raw`\\resumeSubheading${LATEX_ARG}${LATEX_ARG}${LATEX_ARG}${LATEX_ARG}`, 'g');
+
+/**
+ * Employer, education, certification and title claims a CV builder emitted as
+ * structured fields.
+ *
+ * @param {string} text - generated HTML or LaTeX
+ * @returns {{kind: string, value: string, line: string, blocking: boolean}[]}
+ */
+export function structuredFieldClaims(text) {
+  const raw = latexBody(text ?? '');
+  const claims = [];
+  const add = (kind, inner, blocking) => {
+    const line = stripMarkup(inner);
+    const value = normalizeFact(line);
+    if (value) claims.push({ kind, value, line, blocking });
+  };
+  for (const [cls, kind, blocking] of STRUCTURED_HTML_FIELDS) {
+    const re = new RegExp(String.raw`<(span|div)\b[^>]*\bclass="[^"]*(?<![\w-])${cls}(?![\w-])[^"]*"[^>]*>([\s\S]*?)</\1>`, 'gi');
+    for (const match of raw.matchAll(re)) {
+      // edu-title encloses its edu-org span, which is read on its own.
+      add(kind, match[2].replace(/<span\b[^>]*>[\s\S]*?<\/span>/gi, ' '), blocking);
+    }
+  }
+  for (const match of raw.matchAll(LATEX_SUBHEADING_RE)) {
+    add('organization', match[1], true);
+    add('title', match[3], false);
+  }
   const seen = new Set();
   return claims.filter(({ kind, value }) => !seen.has(`${kind}\n${value}`) && seen.add(`${kind}\n${value}`));
 }
@@ -1563,10 +1740,10 @@ function compactMagnitude(raw) {
 
 /** Extract metric-like claims that require source evidence. */
 export function metricClaims(text) {
-  const clean = stripMarkup(text, { keepLineBreaks: true });
+  const clean = spellNumbers(stripMarkup(text, { keepLineBreaks: true }));
   const claims = new Set();
   for (const pattern of SIMPLE_CLAIM_PATTERNS) {
-    for (const match of clean.matchAll(pattern)) claims.add(normalizeClaim(match[0]));
+    for (const match of clean.matchAll(pattern)) claims.add(canonicalMetric(match[0]));
   }
   for (const match of countMatches(clean)) {
     const noun = match[2].toLowerCase();
@@ -1797,7 +1974,11 @@ function looksEnglish(text) {
   if (letters.length && nonLatin.length / letters.length > 0.3) return false;
   let english = 0;
   let other = 0;
-  for (const [word] of text.matchAll(/[\p{L}]+/gu)) {
+  // Addresses are not prose. "com" is Portuguese for "with", so the contact
+  // line of a short CV (jane@example.com, github.com/jane) counted as two or
+  // three Portuguese words and outvoted its English (#5348).
+  const prose = text.replace(/\S+@\S+|\S+:\/\/\S+|[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+\S*/gu, ' ');
+  for (const [word] of prose.matchAll(/[\p{L}]+/gu)) {
     if (word.length > 1 && word === word.toUpperCase()) continue;
     const lower = word.toLowerCase();
     if (ENGLISH_FUNCTION_WORDS.has(lower)) english++;
@@ -1858,15 +2039,23 @@ export function verifyFacts(targetText, {
   configPath = DEFAULT_CONFIG,
   cwd = process.cwd(),
 } = {}) {
-  const sourceText = sourcePaths.map(path => readIfExists(resolveInputPath(path, cwd))).join('\n');
+  // Per file, before the join: stripMarkup keeps only the body of a LaTeX
+  // document, and run on the joined text it would discard every source read
+  // ahead of a .tex one as if it were that document's preamble.
+  const sourceText = sourcePaths.map(path => latexBody(readIfExists(resolveInputPath(path, cwd)))).join('\n');
   const { missing: configMissing, config } = loadFactConfig(resolveInputPath(configPath, cwd));
   const allowed = allowedMetricSet(sourceText, config.allow_metrics);
   const targetClaims = metricClaims(targetText);
   const invented = [...targetClaims].filter(claim => !allowed.has(claim));
   const sourceNormalized = normalizeFact(stripMarkup(sourceText));
   const allowedFacts = new Set(config.allow_facts.map(normalizeFact));
-  const namedFacts = [...factClaims(targetText, sourceNormalized), ...delegatedAuthorshipClaims(targetText, sourceText)]
-    .filter(({ value }) => !sourceContainsFact(sourceNormalized, value) && !allowedFacts.has(value));
+  const unsourced = ({ value }) => !sourceContainsFact(sourceNormalized, value) && !allowedFacts.has(value);
+  const fieldClaims = structuredFieldClaims(targetText).filter(unsourced);
+  const namedFacts = [
+    ...factClaims(targetText, sourceNormalized),
+    ...delegatedAuthorshipClaims(targetText, sourceText),
+    ...fieldClaims.filter(claim => claim.blocking).map(({ kind, value }) => ({ kind, value })),
+  ].filter(unsourced);
   // Scope and adoption claims resolve their own source evidence — a verb-tier
   // comparison and a phrase lookup — so they must not be re-filtered by
   // sourceContainsFact. That test asks whether the claim's own wording appears
@@ -1879,8 +2068,10 @@ export function verifyFacts(targetText, {
   // Adoption claims warn instead of block. The phrase list cannot see every
   // way a source states reach, and a block makes the PDF step tell the agent to
   // stop and fix, so a missed paraphrase would get a true bullet rewritten.
-  const advisoryFacts = (languageGap ? [] : adoptionClaims(targetText, sourceText))
-    .filter(({ value }) => !allowedFacts.has(value));
+  const advisoryFacts = [
+    ...(languageGap ? [] : adoptionClaims(targetText, sourceText)),
+    ...fieldClaims.filter(claim => !claim.blocking).map(({ kind, value, line }) => ({ kind, value, line })),
+  ].filter(({ value }) => !allowedFacts.has(value));
   const unsupportedFacts = [...namedFacts, ...comparedFacts]
     .filter((claim, index, claims) => claims.findIndex(other => other.kind === claim.kind && other.value === claim.value) === index);
   const forbidden = config.forbidden_phrases
@@ -2535,6 +2726,27 @@ export function printAdvisoryFacts(facts = [], print = console.warn) {
   }
 }
 
+/**
+ * Print everything that made a verdict 'warn': advisory phrases, advisory
+ * facts, and what the gate could not read.
+ *
+ * One function for the CLI and every renderer that calls assertFacts. The
+ * renderers used to print the phrases and facts themselves and leave out the
+ * coverage note, so a document the gate could not read showed a warning header
+ * with no reason under it (#5348).
+ *
+ * @param {{warnings?: string[], advisoryFacts?: object[], coverage?: {message: string, spans: string[]}|null}} result
+ * @param {(line: string) => void} [print]
+ */
+export function printFactWarnings(result, print = console.warn) {
+  for (const phrase of result.warnings ?? []) print(`  - advisory phrase: ${phrase}`);
+  printAdvisoryFacts(result.advisoryFacts, print);
+  if (result.coverage) {
+    print(`  - not checked: ${result.coverage.message}`);
+    for (const span of result.coverage.spans.slice(0, 8)) print(`      ${span}`);
+  }
+}
+
 /** Run the fact validator CLI and return its process exit code. */
 export function runCli(args = process.argv.slice(2)) {
   if (args.length === 1 && args[0] === '--self-test') return runSelfTest();
@@ -2575,12 +2787,7 @@ export function runCli(args = process.argv.slice(2)) {
     }
     if (result.verdict === 'warn') {
       console.error(`CV fact check warning: ${basename(targetPath)}`);
-      for (const phrase of result.warnings) console.error(`  - advisory phrase: ${phrase}`);
-      printAdvisoryFacts(result.advisoryFacts, console.error);
-      if (result.coverage) {
-        console.error(`  - not checked: ${result.coverage.message}`);
-        for (const span of result.coverage.spans.slice(0, 8)) console.error(`      ${span}`);
-      }
+      printFactWarnings(result, console.error);
       return 0;
     }
     console.error(`CV fact check failed: ${basename(targetPath)}`);

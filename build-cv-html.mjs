@@ -735,7 +735,7 @@ function renderReport(payload, partials) {
   const candidate = payload.candidate || {};
   // The sheet this body has to fit is chosen by generate-pdf.mjs, so both read
   // the same resolver rather than each keeping a fallback of their own.
-  const pageWidth = PAGE_WIDTHS[resolvePageFormat(payload.page_format, { profilePath: PROFILE_PATH })];
+  const pageWidth = PAGE_WIDTHS[resolvePageFormat(payload.page_format, { profilePath: PROFILE_PATH, country: payload.country })];
 
   const substitutions = {
     LANG: escapeHtml(payload.lang || 'en'),

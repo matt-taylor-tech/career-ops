@@ -62,19 +62,29 @@ export function pickAwaitingDecision(applications, scoreOf, limit = 6) {
     .slice(0, limit);
 }
 
-const AWAITING_GROUPS = ["Recommended", "Below the apply line", "Not scored yet"];
+// "Check the posting first" is what applyLineLabel returns for a flagged
+// posting at or above the line (#5300). It has to be a group here too: a label
+// that is not in this list matches no group, and the row would drop off Today.
+const AWAITING_GROUPS = ["Recommended", "Check the posting first", "Below the apply line", "Not scored yet"];
 
 /**
  * Splits the ranked queue into the groups the Today page renders, keeping the
  * order inside each group. A row with no score has not been judged against the
  * apply line, so it gets its own group instead of "Below the apply line".
  *
+ * `legitimacyOf` is injected for the same reason as `scoreOf` above: the
+ * legitimacy lives in the report file, which the page reads and this module
+ * does not. With it, a flagged posting above the line is grouped the way the
+ * report page labels it (#5300).
+ *
  * @template {{score?: string}} T
  * @param {T[]} awaiting  output of pickAwaitingDecision
+ * @param {(row: T) => string | null | undefined} [legitimacyOf]
  * @returns {[string, T[]][]}  only the non-empty groups, in display order
  */
-export function groupAwaiting(awaiting) {
+export function groupAwaiting(awaiting, legitimacyOf = () => undefined) {
+  const labelOf = (a) => applyLineLabel(a.score, legitimacyOf(a)) ?? "Not scored yet";
   return AWAITING_GROUPS
-    .map((label) => /** @type {[string, T[]]} */ ([label, awaiting.filter((a) => (applyLineLabel(a.score) ?? "Not scored yet") === label)]))
+    .map((label) => /** @type {[string, T[]]} */ ([label, awaiting.filter((a) => labelOf(a) === label)]))
     .filter(([, group]) => group.length > 0);
 }

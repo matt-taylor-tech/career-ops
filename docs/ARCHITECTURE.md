@@ -90,7 +90,7 @@ templates/cv-template.html → PDF generation template
 ## File Naming Conventions
 
 - Reports: `{###}-{company-slug}-{YYYY-MM-DD}.md` (3-digit zero-padded)
-- PDFs: `cv-candidate-{company-slug}-{YYYY-MM-DD}.pdf`
+- PDFs: `cv-candidate-{report-num}-{company-slug}-{YYYY-MM-DD}.pdf`
 - Tracker TSVs: `batch/tracker-additions/{id}.tsv`
 
 ## Pipeline Integrity

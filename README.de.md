@@ -20,7 +20,8 @@
   <a href="README.ar.md">العربية</a> |
   <a href="README.hi.md">हिन्दी</a> |
   <a href="README.tr.md">Türkçe</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
+  <a href="README.vi.md">Tiếng Việt</a> |
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <p align="center"><a href="https://career-ops.org/de/docs?utm_source=readme&utm_content=de">Vollständige Dokumentation auf Deutsch: career-ops.org/de/docs</a></p>
@@ -123,7 +124,11 @@ Die Stille nach dem Absenden hat nichts mit dir zu tun. Genug Leute haben dassel
 
 <br>
 
-Das Recruiting repariert sich nicht von selbst. Die Leute, die es durchmachen, können das, und sie sind schon im Raum, tauschen Notizen aus und reparieren sich gegenseitig die Setups. [Hier wird die Lösung geschrieben](CONTRIBUTING.md). Ein Raum, kein Club. **Lasst uns gemeinsam bauen.**
+Das Recruiting repariert sich nicht von selbst. Die Leute, die es durchmachen, können das, und sie sind schon im Raum, tauschen Notizen aus und reparieren sich gegenseitig die Setups.
+
+<p align="center"><a href="CONTRIBUTING.md"><img src="https://warpchart.dev/api/builders?lang=de" alt="Animierte Wand mit den GitHub-Avataren der Mitwirkenden, die sich seit April 2026 in der Reihenfolge ihrer Ankunft füllt; das nächste Feld bleibt frei." width="100%"></a></p>
+
+[Hier wird die Lösung geschrieben](CONTRIBUTING.md). Ein Raum, kein Club. **Lasst uns gemeinsam bauen.**
 
 <p align="center"><a href="https://discord.gg/8pRpHETxa4"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Fv10%2Finvites%2F8pRpHETxa4%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&label=Discord&suffix=%20members&color=5865F2&style=for-the-badge&labelColor=2b3137&logo=discord&logoColor=white" alt="Discord: Mitgliederzahl des career-ops-Servers, live"></a></p>
 
@@ -205,7 +210,7 @@ npx @santifer/career-ops init
 
 > 💡 `npx` kommt mit [Node.js](https://nodejs.org): Es führt den Installer einmal aus,
 > ohne etwas global zu installieren. Noch kein Node? Installiere es zuerst.
-> (Nutzt du schon eine Claude Code / Gemini / Codex CLI? Dann hast du es bereits.)
+> (Nutzt du schon eine Claude Code / Codex CLI? Dann hast du es bereits.)
 
 Das klont das neueste Release nach `./career-ops` und installiert die Abhängigkeiten. Dann:
 

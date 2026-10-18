@@ -98,7 +98,12 @@ export default {
   (never bare `fetch`); `ctx.fetchResponse` returns the raw `Response` when
   you need headers. Optional `ctx.maxPages`, `ctx.sleep(ms)` and
   `ctx.dedupIncludeLanguage` (whether the scan keeps a posting's language
-  versions apart — fetch extra versions only when it is `true`). Returns a
+  versions apart — fetch extra versions only when it is `true`) and
+  `ctx.preferredLanguageRank(code)` (present when `portals.yml` sets
+  `preferred_languages`: a provider that returns language versions
+  selectively also returns the ranked ones, after each posting's default
+  version, so the scan can keep the preferred one; references
+  `providers/personio.mjs` and `providers/recruitee.mjs`). Returns a
   normalized `Job[]`.
 - `Job` — `title`, `url` (required, absolute — this is the dedup key),
   `company`, `location`; optional `postedAt` (epoch ms) and `description`.
@@ -116,10 +121,12 @@ export default {
   `_types.js` for the full list of optional fields.
   Populate `description` **only** when the list payload carries it for free
   (no extra per-job request — the scanner is zero-token). The one exception
-  is opt-in enrichment: an entry with `fetchDetails: true` (plus an optional
-  `detailLimit` cap) makes the provider fetch per-posting detail to fill
-  `description`, bounded by `detailLimit` and skipped entirely while a health
-  probe runs (reference: `eploy.mjs`; find the rest with
+  is opt-in enrichment: `fetchDetails: true` (plus an optional `detailLimit`
+  cap) under the provider's own config key on the entry —
+  `eploy: { fetchDetails: true, detailLimit: 25 }`, not top-level keys —
+  makes the provider fetch per-posting detail to fill `description`, bounded
+  by `detailLimit` and skipped entirely while a health probe runs
+  (reference: `eploy.mjs`; find the rest with
   `grep -l fetchDetails providers/*.mjs`). That enrichment is
   opt-in *only*: gate the whole detail loop on the entry config asking for
   it **and** on not being in a probe — `eploy.mjs`

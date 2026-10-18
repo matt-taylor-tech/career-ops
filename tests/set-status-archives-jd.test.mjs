@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SCRATCH_PREFIX } from '../lib/scratch-dirs.mjs';
+import { describeSpawn } from './helpers/describe-spawn.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const HEADER = '| # | Date | Company | Role | Score | Status | PDF | Report | Notes | URL |';
@@ -62,7 +63,7 @@ function fakeArchiveCodeRoot() {
     'tracker-parse.mjs', 'lib/local-today.mjs', 'role-matcher.mjs',
     'session-activity.mjs', 'lib/is-main-module.mjs', 'check-jd-archive.mjs',
     'jd-capture.mjs', 'lib/cli-flags.mjs', 'templates/states.yml',
-    'tracker-aliases.json',
+    'tracker-aliases.json', 'lib/dir-lock.mjs',
   ]) copyFileSync(join(ROOT, file), join(codeRoot, file));
   writeFileSync(join(codeRoot, 'archive-posting.mjs'), [
     "import { writeFileSync } from 'node:fs';",
@@ -160,7 +161,7 @@ test('a hung archive child times out and remains warn-only', () => {
         CAREER_OPS_JD_ARCHIVE_TIMEOUT_MS: '100',
       },
     });
-    assert.equal(raw.status, 0, raw.all);
+    assert.equal(raw.status, 0, describeSpawn(raw));
     const result = JSON.parse(raw.stdout);
     assert.equal(result.changed, true, 'the status transition must survive an archive timeout');
     assert.equal(result.jdArchiveTriggered?.attempted, true);

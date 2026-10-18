@@ -19,6 +19,7 @@ import { chromium } from 'playwright';
 import { execFileSync, execFile } from 'child_process';
 import { promisify } from 'util';
 import { rejectPrivateOrInvalid, checkUrlLiveness, LIVENESS_CONTEXT_OPTIONS } from './liveness-browser.mjs';
+import { isUnreadableVerdict } from './liveness-core.mjs';
 import { getCareerOpsRoot } from './path-resolver.mjs';
 import { withPipelineLock } from './pipeline-lock.mjs';
 import { localToday } from './lib/local-today.mjs';
@@ -264,7 +265,7 @@ export async function processOffer(browser, line, idx, _evaluate = evaluateWithR
     // Neither model output nor a failed scrape proves closure. Verify the URL
     // independently; active/uncertain results preserve pending work.
     const liveness = await _checkLiveness(browser, url);
-    if (liveness?.result !== 'expired' || liveness?.code === 'insufficient_content') {
+    if (liveness?.result !== 'expired' || isUnreadableVerdict(liveness)) {
       return { line, processed: false, outcome: 'unconfirmed-dead-posting' };
     }
     const label = match[2] ? `${companyHint} | ${titleHint}` : url;

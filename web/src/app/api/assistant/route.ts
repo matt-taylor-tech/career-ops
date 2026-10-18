@@ -1,7 +1,8 @@
+import { pathToFileURL } from "node:url";
 import { buildConversationContext } from "@/lib/assistant-history.mjs";
 import { spawnHeadlessCli } from "@/lib/spawn-cli.mjs";
 import { cliSubstitutionNotice, cliUnavailableError, resolveCliOrFallback } from "@/lib/clis";
-import { careerOpsRoot, readMemory, doctorState } from "@/lib/career-ops";
+import { careerOpsRoot, readMemory, doctorState, rootScript } from "@/lib/career-ops";
 import { resolveCodeRoot } from "@/lib/core/code-root.mjs";
 import { CAPS } from "@/lib/worker-capabilities.mjs";
 import { scopeFrom } from "@/lib/claude-invocation.mjs";
@@ -19,9 +20,10 @@ import { readJsonObject } from "@/lib/json-body";
  * null = could not be determined (profile or template unreadable): the caller
  * must say so rather than report "filled" or ask for writes that would fail.
  */
-function personalizationGeneric(): string[] | null {
+async function personalizationGeneric(): Promise<string[] | null> {
   try {
-    return readPersonalizationState(careerOpsRoot(), resolveCodeRoot(process.cwd(), process.env)).sections
+    const core = await import(/* webpackIgnore: true */ pathToFileURL(rootScript("lib/personalization")).href);
+    return readPersonalizationState(careerOpsRoot(), resolveCodeRoot(process.cwd(), process.env), core).sections
       .filter((s: { state: string }) => s.state !== "filled")
       .map((s: { heading: string }) => s.heading.replace(/^## Your /, "").toLowerCase());
   } catch {
@@ -112,7 +114,7 @@ export async function POST(req: Request) {
   // prerequisite is "present" the moment doctor auto-copies the template, so
   // doctorState alone would call a generic file "done". Section state is what
   // tells the assistant which parts of the brief are still not this person's.
-  const generic = personalizationGeneric();
+  const generic = await personalizationGeneric();
   const personalizationLine = generic === null
     ? "\n- Personalization: could not be read right now — do NOT emit setPersonalization and do NOT say it is complete; if the user asks, tell them the personalization file could not be read"
     : generic.length

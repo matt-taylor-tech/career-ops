@@ -68,7 +68,7 @@ export const CAPS = Object.freeze({
  * Lives here rather than in claude-invocation.mjs because it is a fact about the
  * run route's workers, not about Claude. Re-exported there for existing importers.
  */
-export const KNOWN_KINDS = Object.freeze(["pdf", "research", "evaluate", "fix-portal", "verify-link"]);
+export const KNOWN_KINDS = Object.freeze(["pdf", "research", "evaluate", "fix-portal", "verify-link", "cover"]);
 
 /**
  * What each run-route kind needs. Derived from what its prompt actually does
@@ -84,6 +84,8 @@ export const KNOWN_KINDS = Object.freeze(["pdf", "research", "evaluate", "fix-po
  * - verify-link fetches the one posting URL the report names and returns a
  *             <<verify-link>> envelope; the backend (verify-link.mjs) writes the
  *             report's Verification line — the worker never writes.
+ * - cover     runs cover.md's web research and re-reads the posting url, then
+ *             returns the draft letter in its reply. It writes nothing.
  *
  * No kind here is search-only: every web-using kind is pointed at a url (the
  * posting, the board). CAPS.webSearchOnly belongs to AI search, which is a route
@@ -95,6 +97,7 @@ const KIND_CAPABILITIES = Object.freeze({
   evaluate: CAPS.networkReadOnly,
   "fix-portal": CAPS.workspaceWrite,
   "verify-link": CAPS.networkReadOnly,
+  cover: CAPS.networkReadOnly,
 });
 
 /**

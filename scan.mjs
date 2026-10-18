@@ -38,7 +38,6 @@
  */
 
 import {
-  appendFileSync,
   closeSync,
   existsSync,
   fchmodSync,
@@ -67,7 +66,7 @@ import { fingerprintText, findCrossListings } from './fingerprint-core.mjs';
 import { computeListingFingerprint } from './listing-fingerprint.mjs';
 import { resolveColumns, parseTrackerRow, normalizeTextKey, extractReqNumber, REQ_NUMBER_RE } from './tracker-parse.mjs';
 import { workdayDedupKey, stripWorkdayRepostSuffix, isWorkdayJobUrl } from './providers/workday.mjs';
-import { normalizeCompany } from './tracker-utils.mjs';
+import { normalizeCompany, appendLedgerRows } from './tracker-utils.mjs';
 import { normalizeCompanyName } from './invite-match.mjs';
 import { withPipelineLock } from './pipeline-lock.mjs';
 import { compileKeyword, compilePositiveKeyword, compileContentKeyword, buildTitleFilter, foldTitle } from './title-keywords.mjs';
@@ -79,7 +78,7 @@ import { isMainModule } from './lib/is-main-module.mjs';
 import { SCAN_HISTORY_COLUMNS, parseScanHistoryLine } from './lib/scan-history-columns.mjs';
 import { escapeFormulaCell } from './lib/tsv-formula-escape.mjs';
 import { promoteKnownFragmentIdentity, LANGUAGE_PARAMS, languageSubtag } from './url-key.mjs';
-import { getCareerOpsRoot } from './path-resolver.mjs';
+import { getCareerOpsRoot, getProfilePath, hasProfileOverride } from './path-resolver.mjs';
 import { checkLivenessViaApi } from './liveness-api.mjs';
 
 const CODE_ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -102,7 +101,9 @@ const parseYaml = yaml.load;
 import { resolveTrackerPath } from './path-resolver.mjs';
 
 export const PORTALS_PATH = process.env.CAREER_OPS_PORTALS || path.join(DATA_ROOT, 'portals.yml');
-const PROFILE_PATH = process.env.CAREER_OPS_PROFILE || path.join(DATA_ROOT, 'config/profile.yml');
+// An explicit override wins; otherwise the root fixed above, since the .env just
+// loaded may name another CAREER_OPS_ROOT that getProfilePath() would follow.
+const PROFILE_PATH = hasProfileOverride() ? getProfilePath() : getProfilePath(DATA_ROOT);
 // Overridable for the same reason the two inputs above are (#2271). A second
 // search lane - a bridge/income track, a career-change track, a partner sharing
 // the checkout - already gets its own portals.yml and profile, but without these
@@ -1479,15 +1480,25 @@ const RECHECKABLE_SCAN_HISTORY_STATUSES = new Set(['added', 'skipped_expired']);
  * Every other skipped status describes the posting: a dead URL stays dead
  * until the configured recheck window releases it (see
  * RECHECKABLE_SCAN_HISTORY_STATUSES), a blocked host stays blocked, so pinning
- * saves a later scan the work. These
- * two describe the user's CONFIG instead — `location_filter` and
- * `max_posting_age_days` are thresholds they edit. Pinning would mean a role
- * dropped under the old threshold never resurfaces under the new one, which is
- * the opposite of what recording the drop is for.
+ * saves a later scan the work. These three describe something else.
  *
- * Pinning would also buy nothing: both cuts run on data the provider already
- * returned, before any liveness verification, so a re-scan of one of these URLs
- * costs no extra request.
+ * `skipped_location` and `skipped_age` describe the user's CONFIG —
+ * `location_filter` and `max_posting_age_days` are thresholds they edit.
+ * Pinning would mean a role dropped under the old threshold never resurfaces
+ * under the new one, which is the opposite of what recording the drop is for.
+ * For those two, not pinning is also free: both cuts run on data the provider
+ * already returned, before any liveness verification, so a re-scan of one of
+ * these URLs costs no extra request.
+ *
+ * `skipped_no_apply_control` describes the CHECK: the browser classifier did
+ * not see an Apply control, which is not proof the posting is closed. On
+ * boards whose button it does not recognise, pinning would drop a live posting
+ * once and never offer it again (#4832). Unlike the other two, this verdict
+ * comes from a browser load, so every `--verify` scan re-opens the posting for
+ * as long as the provider lists it. That is the accepted price: a slower
+ * `--verify` beats a posting lost for good, and it shrinks as the classifier
+ * learns each board, since a posting that reads `active` gets an `added` row
+ * and stops coming back.
  *
  * `collectSeenCompanyRoles` needs no companion change — it already seeds from
  * `added` rows alone.
@@ -1495,6 +1506,7 @@ const RECHECKABLE_SCAN_HISTORY_STATUSES = new Set(['added', 'skipped_expired']);
 const OBSERVATIONAL_SCAN_HISTORY_STATUSES = new Set([
   'skipped_location',
   'skipped_age',
+  'skipped_no_apply_control',
 ]);
 
 /**
@@ -1541,6 +1553,7 @@ function daysBetweenIsoDates(start, end) {
 // explicitly; only the default moves.
 export function shouldDedupScanHistoryRow({ firstSeen, status = 'added' }, { recheckAfterDays = null, today = localToday() } = {}) {
   if (PERMANENT_SCAN_HISTORY_STATUSES.has(status)) return true;
+  if (OBSERVATIONAL_SCAN_HISTORY_STATUSES.has(status)) return false;
   if (status.startsWith('cooldown:')) {
     const parts = status.split(':');
     const cooldownUntil = parts[parts.length - 1];
@@ -1603,6 +1616,68 @@ export function resolveDedupIncludeLocation(config = {}) {
  */
 export function resolveDedupIncludeLanguage(config = {}) {
   return config.scan_history?.dedup_include_language === true;
+}
+
+/**
+ * Read the top-level `preferred_languages` list: the languages the candidate
+ * wants a posting in, best first.
+ *
+ * Each entry is reduced the way posting languages are (languageFormsForDedup),
+ * so `en-GB` and `en` name one language. A single string counts as a one-entry
+ * list; anything that is not a non-empty string is skipped, and a repeated
+ * language keeps its first place.
+ *
+ * @param {object} [config] - Parsed portals.yml.
+ * @returns {string[]} Language forms, best first; empty when unset.
+ */
+export function resolvePreferredLanguages(config = {}) {
+  const raw = config.preferred_languages;
+  const list = typeof raw === 'string' ? [raw] : Array.isArray(raw) ? raw : [];
+  return [...new Set(list.flatMap(entry => languageFormsForDedup(entry)))];
+}
+
+/**
+ * Rank a posting language against the preferred list: its place in the list,
+ * or -1 when it is not there or unknown.
+ *
+ * Handed to providers as `ctx.preferredLanguageRank`, so a provider compares
+ * its own codes by the same rules without its own copy of them.
+ *
+ * @param {string[]} preferred - From resolvePreferredLanguages.
+ * @returns {(language: unknown) => number}
+ */
+export function preferredLanguageRanker(preferred) {
+  return (language) => {
+    const [form] = languageFormsForDedup(language);
+    return form === undefined ? -1 : preferred.indexOf(form);
+  };
+}
+
+/**
+ * Order one provider's jobs so that postings in a preferred language come
+ * first, best language first; the rest keep the provider's order.
+ *
+ * The sort is stable. Where several language versions of one posting come
+ * back, the dedup below keeps the first one it meets when dedup_include_language
+ * is off, so this is what makes it keep the preferred version; when it is on,
+ * every version is kept, in this order. The provider's own order — each
+ * posting's default language first — is what the language-aware URL dedup
+ * resolves seen rows against, so siblingsByUrl is built from the unsorted list.
+ *
+ * @template {{language?: unknown}} T
+ * @param {T[]} jobs
+ * @param {(language: unknown) => number} rank - From preferredLanguageRanker.
+ * @returns {T[]} A new array; `jobs` is left as it was.
+ */
+export function orderByPreferredLanguage(jobs, rank) {
+  const keyOf = (job) => {
+    const r = rank(job?.language);
+    return r < 0 ? Number.POSITIVE_INFINITY : r;
+  };
+  return jobs
+    .map((job, index) => ({ job, index, key: keyOf(job) }))
+    .sort((a, b) => a.key - b.key || a.index - b.index)
+    .map(({ job }) => job);
 }
 
 // Query params that carry no identity information for a job posting — safe to
@@ -1971,10 +2046,10 @@ export function collectSeenUrls(sources = {}, policy = {}, { extraTokensFor } = 
     const { url, first_seen: firstSeen, portal, status: rawStatus, title, language, listing_key: listingKey } = parseScanHistoryLine(line);
     const status = rawStatus || 'added';
     if (!url) continue;
-    // Not pinned and not a recheck candidate either: the row records a config
-    // rejection, and the URL was never queued, so counting it as "eligible
-    // again" would overstate what the TTL released. See
-    // OBSERVATIONAL_SCAN_HISTORY_STATUSES.
+    // Not pinned, no listing identity, and not a recheck candidate either: the
+    // row records a config rejection or an inconclusive Apply-control check,
+    // and the URL was never queued, so counting it as "eligible again" would
+    // overstate what the TTL released. See OBSERVATIONAL_SCAN_HISTORY_STATUSES.
     if (OBSERVATIONAL_SCAN_HISTORY_STATUSES.has(status)) continue;
     if (shouldDedupScanHistoryRow({ firstSeen, status }, policy)) {
       const urlToken = normalizeUrlForDedup(url);
@@ -1982,9 +2057,10 @@ export function collectSeenUrls(sources = {}, policy = {}, { extraTokensFor } = 
       const recorded = languageFormsForDedup(language);
       recordUrlVariant(variants, urlToken, recorded.length ? recorded : languageFormsFromUrl(url), title);
       // Only accepted or intentionally deferred posting rows can teach this
-      // scan a strong identity. Verification rejections such as expired or
-      // missing-apply-control URLs may pin that URL, but must not suppress a
-      // different live alias with the same provider identity.
+      // scan a strong identity. A verification rejection such as an expired
+      // URL may pin that URL, but must not suppress a different live alias
+      // with the same provider identity. (A missing Apply control never gets
+      // here: its row is observational and pins nothing, see above.)
       const identityMayPromote = status === 'added' || status.startsWith('cooldown:');
       if (identityMayPromote) addIdentityPromotableUrl(urlToken, listingKey);
       if (extraTokensFor && identityMayPromote) {
@@ -3344,7 +3420,7 @@ export async function appendToScanHistory(offers, date, status = 'added', { alre
 
     const lines = offers.map(o => formatScanHistoryRow(o, date, status)).join('\n') + '\n';
 
-    appendFileSync(SCAN_HISTORY_PATH, lines, 'utf-8');
+    appendLedgerRows(SCAN_HISTORY_PATH, lines);
   };
 
   if (alreadyLocked) write();
@@ -3600,7 +3676,7 @@ export function appendScanRunSummary(c, filePath = SCAN_RUNS_PATH) {
     // filtered_country_eligibility (#2093) appended at the END for the same reason.
     c.filteredCountryEligibility ?? 0,
   ].join('\t') + '\n';
-  appendFileSync(filePath, row, 'utf-8');
+  appendLedgerRows(filePath, row);
 }
 
 // ── Portal health persistence (#1744) ───────────────────────────────
@@ -3630,7 +3706,7 @@ export async function appendPortalHealth(healthRecords, filePath = PORTAL_HEALTH
     for (const r of healthRecords) {
       lines += [r.timestamp, r.company, r.status].join('\t') + '\n';
     }
-    if (lines) appendFileSync(filePath, lines, 'utf-8');
+    if (lines) appendLedgerRows(filePath, lines);
   });
 }
 
@@ -3701,6 +3777,7 @@ export async function verifyOffers(offers, { headedFallback = false, throttleBas
   const {
     rejectPrivateOrInvalid, checkUrlLiveness, checkUrlLivenessWithFallback,
     createHeadedPageProvider, newLivenessPage, installLivenessRouteGuard, jitteredDelayMs, sleep,
+    takeSuppressedBlockCount,
   } = await import('./liveness-browser.mjs');
 
   // The HTTP rung can run concurrently; each provider retains its own rate
@@ -3757,12 +3834,14 @@ export async function verifyOffers(offers, { headedFallback = false, throttleBas
     ? checkUrlLivenessWithFallback(page, url, { getHeadedPage: () => headed.get() })
     : checkUrlLiveness(page, url);
 
-  // Three permanent buckets + one transient passthrough:
+  // Two permanent buckets, one observational, one transient passthrough:
   //   verified  → active pages and transient nav errors (retry next scan)
   //   expired   → classifier-confirmed dead postings (HTTP 4xx, redirect markers,
   //               body patterns, listing pages, insufficient content)
   //   dropped   → page loaded but classifier saw no Apply control. --verify is an
-  //               opt-in stricter filter; keeping these defeats the purpose.
+  //               opt-in stricter filter; keeping these defeats the purpose. Not
+  //               proof the posting is closed, so the row never pins the URL and
+  //               the next --verify scan loads the page again (#4832).
   //   invalid   → up-front URL guard rejections (malformed / non-http / private)
   const verified = [];
   const verificationStatusByOffer = new Map();
@@ -3819,9 +3898,11 @@ export async function verifyOffers(offers, { headedFallback = false, throttleBas
         invalid.push({ ...offer, code, reason });
         console.log(`  ⛔ invalid   ${offer.company} | ${offer.title} (${reason})`);
       } else if (result === 'uncertain' && code === 'no_apply_control') {
-        // Page loaded but classifier could not find an Apply control. Treat like
-        // expired for routing — drop from pipeline AND record in scan-history so
-        // we don't burn a verify cycle on the same URL next scan.
+        // Page loaded but classifier could not find an Apply control. Drop from
+        // pipeline and record in scan-history for visibility only: the row does
+        // not pin the URL (OBSERVATIONAL_SCAN_HISTORY_STATUSES), so the next
+        // --verify scan checks it again rather than losing a live posting whose
+        // button the classifier does not recognise (#4832).
         dropped.push({ ...offer, reason });
         console.log(`  ⚠️ no-apply  ${offer.company} | ${offer.title} (${reason})`);
       } else {
@@ -3839,6 +3920,9 @@ export async function verifyOffers(offers, { headedFallback = false, throttleBas
       if (browser) await browser.close();
     }
   }
+  // The route guard counts, rather than logs, subresources a DNS filter blocks.
+  const quietBlocks = typeof takeSuppressedBlockCount === 'function' ? takeSuppressedBlockCount() : 0;
+  if (quietBlocks) console.warn(`--verify: ${quietBlocks} tracker/analytics requests skipped (no usable address, e.g. a DNS ad-blocker); not counted against any posting`);
 
   return { verified, expired, dropped, invalid, migrated, verificationStatusByOffer };
 }
@@ -4166,6 +4250,8 @@ async function main() {
   const canonicalizeCompany = buildCompanyCanonicalizer(config.company_aliases);
   const dedupIncludeLocation = resolveDedupIncludeLocation(config);
   const dedupIncludeLanguage = resolveDedupIncludeLanguage(config);
+  const preferredLanguages = resolvePreferredLanguages(config);
+  const preferredLanguageRank = preferredLanguages.length ? preferredLanguageRanker(preferredLanguages) : null;
   const dedupSnapshot = loadDedupSnapshot(historyPolicy, canonicalizeCompany, { includeLocation: dedupIncludeLocation });
   const seenUrls = dedupSnapshot.seen;
   const seenUrlVariants = dedupSnapshot.seenUrlVariants ?? new Map();
@@ -4275,6 +4361,9 @@ async function main() {
       // A provider that serves extra language versions of a posting at extra
       // cost fetches them only when the scan will keep them.
       dedupIncludeLanguage,
+      // Present only when portals.yml sets preferred_languages: a provider that
+      // returns language versions selectively also returns the preferred ones.
+      ...(preferredLanguageRank ? { preferredLanguageRank } : {}),
     };
     let sourceName = provider.id === 'local-parser' ? 'local-parser' : `${provider.id}-api`;
     try {
@@ -4318,7 +4407,8 @@ async function main() {
       }
 
       const declaredFields = normalizeFilterOn(company.filter_on);
-      for (const job of jobs) {
+      const orderedJobs = preferredLanguageRank ? orderByPreferredLanguage(jobs, preferredLanguageRank) : jobs;
+      for (const job of orderedJobs) {
         const listingToken = refreshListingKey(job);
         // #3438. Presence accounting only — no verdict, no rejection. It runs
         // before every filter below, including the blacklist skip, because it
@@ -4629,10 +4719,14 @@ async function main() {
     if (newLocationRows.length > 0) await appendToScanHistory(newLocationRows, date, 'skipped_location');
     if (newAgeRows.length > 0) await appendToScanHistory(newAgeRows, date, 'skipped_age');
   }
-  // Pages that loaded but had no Apply control: record so we don't re-verify
-  // them next scan, but never let them reach pipeline.md.
+  // Pages that loaded but had no Apply control: recorded for visibility and
+  // never added to pipeline.md. The row carries no dedup weight
+  // (OBSERVATIONAL_SCAN_HISTORY_STATUSES), because "no visible Apply control"
+  // is not proof the posting is closed; the next scan verifies it again.
+  // Each posting is recorded once, not once per scan.
   if (!dryRun && droppedOffers.length > 0) {
-    await appendToScanHistory(droppedOffers, date, 'skipped_no_apply_control');
+    const newDroppedRows = unrecordedOffers(droppedOffers, 'skipped_no_apply_control', readIfExists(SCAN_HISTORY_PATH));
+    if (newDroppedRows.length > 0) await appendToScanHistory(newDroppedRows, date, 'skipped_no_apply_control');
   }
   // Guard-rejected URLs (invalid / unsupported protocol / blocked host) are
   // recorded with a precise status so subsequent scans dedup-skip them via

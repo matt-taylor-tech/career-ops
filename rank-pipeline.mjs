@@ -33,7 +33,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { flagValue, hasFlag, validateFlags } from './lib/cli-flags.mjs';
+import { flagValue, hasFlag, safeIntFlag, validateFlags } from './lib/cli-flags.mjs';
 import { sanitizeMarkdownField } from './scan.mjs';
 import { withPipelineLock } from './pipeline-lock.mjs';
 import { isMainModule } from './lib/is-main-module.mjs';
@@ -300,7 +300,12 @@ async function main(args) {
   }
 
   const dryRun = hasFlag(args, '--dry-run');
-  const limit = flagValue(args, '--limit') ?? DEFAULT_LIMIT;
+  const rawLimit = flagValue(args, '--limit');
+  const limit = safeIntFlag(rawLimit, hasFlag(args, '--limit') ? 0 : DEFAULT_LIMIT);
+  if (limit <= 0 || rawLimit?.trim() !== rawLimit) {
+    console.error('--limit must be a positive integer.');
+    return 1;
+  }
   const model = flagValue(args, '--model');
   const forced = flagValue(args, '--cli') ?? process.env.CAREER_OPS_RANK_CLI;
 

@@ -495,7 +495,7 @@ read_spend_tier() {
 # Tier -> model mapping. Keep in sync with the table in modes/_shared.md.
 spend_tier_to_model() {
   case "$1" in
-    economy) echo "claude-haiku-4-5" ;;
+    economy) echo "claude-haiku-5-5" ;;
     premium) echo "claude-opus-5-5" ;;
     standard|*) echo "claude-sonnet-5-5" ;;
   esac
@@ -558,8 +558,15 @@ update_state_unlocked() {
   # Write header
   head -1 "$STATE_FILE" > "$tmp"
 
-  # Process existing lines
-  while IFS=$'\t' read -r sid surl sstatus sstarted scompleted sreport sscore serror sretries; do
+  # Process existing lines. Don't split a row with `IFS=$'\t' read`: tab is IFS
+  # whitespace, so the two tabs around an empty cell (an empty error from a
+  # worker that died without output, or an empty completed_at/score written by
+  # reconcile_recovery_records) collapse into one and every later cell shifts
+  # left -- `retries` became the error text and the retry counter was lost.
+  # Read the line raw and split on \x1f after translating the tabs, as
+  # reconcile_recovery_records does.
+  while IFS= read -r sline; do
+    IFS=$'\x1f' read -r sid surl sstatus sstarted scompleted sreport sscore serror sretries <<< "${sline//$'\t'/$'\x1f'}"
     [[ "$sid" == "id" ]] && continue  # skip header
     if [[ "$sid" == "$id" ]]; then
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
@@ -1090,7 +1097,7 @@ process_offer() {
     rm -f "$jd_api_tmp"
   fi
 
-  echo "--- Processing offer #$id: $url (report $report_num, attempt $((retries + 1)))"
+  echo "--- Processing offer #$id${JOB_POS:+ ($JOB_POS)}: $url (report $report_num, attempt $((retries + 1)))"
 
   # Build the prompt with placeholders replaced
   local prompt
@@ -1461,6 +1468,10 @@ merge_tracker() {
   node "$PROJECT_DIR/verify-pipeline.mjs" || echo "⚠️  Verification found issues (see above)"
 }
 
+report_progress() {
+  echo "=== Progress: $1/$2 offers finished, $((SECONDS - BATCH_START))s elapsed ==="
+}
+
 # Print summary
 print_summary() {
   echo ""
@@ -1773,10 +1784,15 @@ main() {
   fi
 
   # Process offers
+  BATCH_START=$SECONDS
+  local done_jobs=0
   if (( PARALLEL <= 1 )); then
     # Sequential processing
     for i in "${!pending_ids[@]}"; do
+      JOB_POS="$((i + 1))/$pending_count"
       process_offer "${pending_ids[$i]}" "${pending_urls[$i]}" "${pending_sources[$i]}" "${pending_notes[$i]}"
+      done_jobs=$((done_jobs + 1))
+      report_progress "$done_jobs" "$pending_count"
       if [[ "$BATCH_PAUSED" == "true" || -f "$PAUSE_FILE" ]]; then
         echo "=== Batch paused: session/rate limit reached. Resume later with --resume-paused. ==="
         break
@@ -1813,6 +1829,8 @@ main() {
             unset 'pids[j]'
             unset 'pid_ids[j]'
             running=$((running - 1))
+            done_jobs=$((done_jobs + 1))
+            report_progress "$done_jobs" "$pending_count"
           fi
         done
         # Compact arrays
@@ -1837,6 +1855,7 @@ main() {
       fi
 
       # Launch worker in background
+      JOB_POS="$((i + 1))/$pending_count"
       process_offer "${pending_ids[$i]}" "${pending_urls[$i]}" "${pending_sources[$i]}" "${pending_notes[$i]}" &
       pids+=($!)
       pid_ids+=("${pending_ids[$i]}")
@@ -1850,6 +1869,8 @@ main() {
       if (( worker_rc != 0 )); then
         parallel_rc=$worker_rc
       fi
+      done_jobs=$((done_jobs + 1))
+      report_progress "$done_jobs" "$pending_count"
     done
     if (( parallel_rc != 0 )); then
       echo "ERROR: a parallel worker failed fatally; tracker merge skipped. Inspect the worker log and repair state before rerunning." >&2

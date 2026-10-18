@@ -149,6 +149,40 @@ test("scheduled overlay falls back to portal title keywords and preserves hard l
   }
 });
 
+test("scheduled scan hands core the profile path the web resolves, not the raw relative value", () => {
+  // The scanner runs with cwd = the checkout, but the web resolves a relative
+  // CAREER_OPS_PROFILE under the data root it passes, so forwarding the raw value
+  // would let a data root outside the checkout read a different profile.
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "career-ops-scheduled-profile-"));
+  fs.writeFileSync(path.join(temp, "portals.yml"), "title_filter:\n  positive: [engineer]\nlocation_filter: {}\n", "utf8");
+  const job = { id: "22222222-2222-4222-8222-222222222222", engine: "full", filters: { positive: ["engineer"] } };
+  const saved = process.env.CAREER_OPS_PROFILE;
+  const seen = (value) => {
+    if (value === undefined) delete process.env.CAREER_OPS_PROFILE;
+    else process.env.CAREER_OPS_PROFILE = value;
+    let profile;
+    const result = executeJob(temp, job, {
+      spawnFn: (_node, _args, options) => {
+        profile = options.env.CAREER_OPS_PROFILE;
+        return { status: 0, stdout: JSON.stringify({ postingsKept: 0 }), stderr: "" };
+      },
+    });
+    assert.equal(result.state, "success");
+    return profile;
+  };
+  try {
+    assert.equal(seen("profiles/me.yml"), path.join(temp, "profiles", "me.yml"));
+    assert.equal(seen("  profiles/me.yml  "), path.join(temp, "profiles", "me.yml"));
+    const absolute = path.join(os.tmpdir(), "elsewhere", "profile.yml");
+    assert.equal(seen(absolute), absolute);
+    assert.equal(seen(undefined), undefined);
+  } finally {
+    if (saved === undefined) delete process.env.CAREER_OPS_PROFILE;
+    else process.env.CAREER_OPS_PROFILE = saved;
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
 test("scheduled scan never starts without title keywords", () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "career-ops-scheduled-no-titles-"));
   fs.writeFileSync(path.join(temp, "portals.yml"), "title_filter: {}\n", "utf8");

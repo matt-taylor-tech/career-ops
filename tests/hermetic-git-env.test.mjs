@@ -238,3 +238,50 @@ try {
 } finally {
   rmSync(signingRoot, { recursive: true, force: true });
 }
+
+// A global `core.hooksPath` is the same leak through a different key. A
+// contributor whose global hooks enforce a commit-message format (or run a
+// scanner) sees every fixture commit rejected, so these suites threw at their
+// first `git commit` before a single assertion ran. Each one is run here under
+// a global config that points hooksPath at hooks that always fail; a fixture
+// that does not pin its own hooksPath cannot commit at all under it.
+console.log('\nhermetic git env — fixture commits survive a global core.hooksPath');
+
+const hooksRoot = mkdtempSync(join(tmpdir(), 'career-ops-hermetic-hooks-'));
+try {
+  const hooksDir = join(hooksRoot, 'hooks');
+  mkdirSync(hooksDir, { recursive: true });
+  for (const hook of ['pre-commit', 'commit-msg']) {
+    writeFileSync(join(hooksDir, hook), '#!/bin/sh\necho "rejected by a global hook" >&2\nexit 1\n', { mode: 0o755 });
+  }
+  const hooksConfig = join(hooksRoot, 'gitconfig');
+  writeFileSync(hooksConfig, `[core]\n\thooksPath = ${hooksDir.replace(/\\/g, '/')}\n`);
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: hooksConfig };
+  for (const name of ['GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG']) delete env[name];
+
+  for (const name of [
+    'doctor-code-root-checks',
+    'doctor-tracked-bak-files',
+    'update-system',
+    'updater-commit-file-modes',
+    'updater-drift-detection',
+    'updater-signature-ledger-drift',
+    'updater-status-paths',
+    'updater-upgrade-safety',
+  ]) {
+    const suite = fileURLToPath(new URL(`./${name}.test.mjs`, import.meta.url));
+    const child = spawnSync(process.execPath, [suite], { encoding: 'utf-8', timeout: 120000, env });
+    const out = child.stdout || '';
+    const failures = out.split('\n').filter((line) => line.includes('❌'));
+    if (child.status === 0 && failures.length === 0) {
+      pass(`${name} commits its fixtures under a global hooksPath that rejects every commit`);
+    } else {
+      const why = failures[0]?.trim()
+        || (child.stderr || '').split('\n').find((line) => /fatal:|error:|Error: /.test(line))?.trim()
+        || 'no output';
+      fail(`${name} does not survive a global core.hooksPath (exit ${child.status}): ${why}`);
+    }
+  }
+} finally {
+  rmSync(hooksRoot, { recursive: true, force: true });
+}

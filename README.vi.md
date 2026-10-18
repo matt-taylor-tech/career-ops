@@ -20,7 +20,8 @@
   <a href="README.ar.md">العربية</a> |
   <a href="README.hi.md">हिन्दी</a> |
   <a href="README.tr.md">Türkçe</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
+  <a href="README.vi.md">Tiếng Việt</a> |
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <!-- The non-breaking spaces (&nbsp;) and word joiners (&#8288;) below decide where each line wraps on a phone. Keep them when editing. -->
@@ -121,7 +122,11 @@ Sự im lặng sau khi bạn bấm gửi không phải lỗi của bạn. Đủ 
 
 <br>
 
-Việc tuyển dụng sẽ không tự sửa. Những người đang trải qua nó thì có thể, và họ đã ở trong phòng, trao đổi kinh nghiệm và sửa cấu hình cho nhau. [Đây là nơi bản sửa được viết ra](CONTRIBUTING.md). Một căn phòng, không phải một câu lạc bộ. **Hãy cùng xây dựng.**
+Việc tuyển dụng sẽ không tự sửa. Những người đang trải qua nó thì có thể, và họ đã ở trong phòng, trao đổi kinh nghiệm và sửa cấu hình cho nhau.
+
+<p align="center"><a href="CONTRIBUTING.md"><img src="https://warpchart.dev/api/builders?lang=vi" alt="Bức tường động gồm ảnh đại diện GitHub của những người đóng góp, lấp đầy theo thứ tự tham gia từ tháng 4 năm 2026, với ô tiếp theo để trống." width="100%"></a></p>
+
+[Đây là nơi bản sửa được viết ra](CONTRIBUTING.md). Một căn phòng, không phải một câu lạc bộ. **Hãy cùng xây dựng.**
 
 <p align="center"><a href="https://discord.gg/8pRpHETxa4"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Fv10%2Finvites%2F8pRpHETxa4%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&label=Discord&suffix=%20members&color=5865F2&style=for-the-badge&labelColor=2b3137&logo=discord&logoColor=white" alt="Discord: số thành viên của máy chủ career-ops theo thời gian thực"></a></p>
 

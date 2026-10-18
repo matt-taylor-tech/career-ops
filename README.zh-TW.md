@@ -20,7 +20,8 @@
   <a href="README.ar.md">العربية</a> |
   <a href="README.hi.md">हिन्दी</a> |
   <a href="README.tr.md">Türkçe</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
+  <a href="README.vi.md">Tiếng Việt</a> |
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <p align="center"><a href="https://career-ops.org/zh?utm_source=readme&utm_content=zh-tw">網站目前只有簡體中文版：career-ops.org/zh</a></p>
@@ -123,7 +124,11 @@ npx @santifer/career-ops init
 
 <br>
 
-招募不會自己修好。正在經歷它的人可以，而且他們已經在這個房間裡，交換筆記，互相修各自的設定。[修復就是在這裡寫出來的](CONTRIBUTING.md)。是房間，不是俱樂部。**一起來建。**
+招募不會自己修好。正在經歷它的人可以，而且他們已經在這個房間裡，交換筆記，互相修各自的設定。
+
+<p align="center"><a href="CONTRIBUTING.md"><img src="https://warpchart.dev/api/builders?lang=zh-TW" alt="貢獻者 GitHub 頭像組成的動態牆，自 2026年4月 起依加入順序逐一填滿，下一格留空。" width="100%"></a></p>
+
+[修復就是在這裡寫出來的](CONTRIBUTING.md)。是房間，不是俱樂部。**一起來建。**
 
 <p align="center"><a href="https://discord.gg/8pRpHETxa4"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Fv10%2Finvites%2F8pRpHETxa4%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&label=Discord&suffix=%20members&color=5865F2&style=for-the-badge&labelColor=2b3137&logo=discord&logoColor=white" alt="Discord：career-ops 伺服器的即時成員數"></a></p>
 
@@ -205,7 +210,7 @@ npx @santifer/career-ops init
 
 > 💡 `npx` 隨 [Node.js](https://nodejs.org) 一起提供：它只執行一次安裝程式，
 > 不會全域安裝任何東西。還沒有 Node？先安裝它。
-> （已經在用 Claude Code / Gemini / Codex CLI？那你已經有了。）
+> （已經在用 Claude Code / Codex CLI？那你已經有了。）
 
 這會把最新版本複製到 `./career-ops` 並安裝相依套件。然後：
 
