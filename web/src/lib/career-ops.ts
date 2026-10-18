@@ -20,6 +20,13 @@ import { resolvePdfIndexPath } from "@/lib/core/pdf-index";
 // index row belong to" (#2599, #2008 review).
 import { pdfIndexEntryForReport } from "@/lib/apply/cv-selection.mjs";
 import { buildReportUrlIndex, isDecidedStatus } from "./report-urls.mjs";
+import {
+  classifyFirst,
+  localPlaces,
+  placeMatcher,
+  reportRemoteField,
+  type WorkLocation,
+} from "./work-location.mjs";
 // The managed-block markers and the profile read live together in one plain
 // module, so rememberFact() (the block's only WRITER) and readMemory() (its
 // reader) cannot drift apart, and so the read rule is testable from web/tests.
@@ -121,7 +128,7 @@ function read(rel: string): string | null {
   }
 }
 
-export type InboxJob = { url: string; company: string; role: string; location?: string; compensation?: string; done: boolean; postedAt?: string; report?: { n: string; score: number | null } };
+export type InboxJob = { url: string; company: string; role: string; location?: string; compensation?: string; done: boolean; postedAt?: string; report?: { n: string; score: number | null }; workLocation?: WorkLocation };
 
 /** Parse data/pipeline.md. The row grammar and its labeled-segment handling
  *  live in pipeline-table.mjs — see there for the column rules (#1015, #1017). */
@@ -177,6 +184,8 @@ export type Application = {
   notes: string;
   /** Tracker's `URL` column. A raw URL or a markdown link. "" when the column is absent. */
   url: string;
+  /** Remote / local / other, set by pipelineSummary() for the pipeline's location filter. */
+  workLocation?: WorkLocation;
 };
 
 /**
@@ -389,6 +398,21 @@ export function pipelineSummary(): PipelineSummary {
       statusByReport.set(String(parseInt(rep, 10)), a.status);
     }
   }
+  const isLocal = placeMatcher(readLocalPlaces(root));
+  // The report's Remote row is the evaluator's reading of the posting; the
+  // tracker's Location column, role text and notes are fallbacks for unscored rows.
+  for (const a of applications) {
+    const file = linkedReportPath(a, root);
+    let remoteField = "";
+    if (file) {
+      try {
+        remoteField = reportRemoteField(fs.readFileSync(/* turbopackIgnore: true */ file, "utf8"));
+      } catch {
+        /* unreadable report: fall back to the tracker's own text */
+      }
+    }
+    a.workLocation = classifyFirst([remoteField, a.location, a.role, a.notes], isLocal);
+  }
   return {
     root,
     rootExists: fs.existsSync(root),
@@ -407,7 +431,12 @@ export function pipelineSummary(): PipelineSummary {
       .map((j) => {
         const hit = reportIndex.get(j.url);
         const report = hit ? { n: rowByReport.get(hit.n) ?? hit.n, score: hit.score } : undefined;
-        return { ...j, postedAt: j.postedAt ?? scanDates.get(j.url), ...(report ? { report } : {}) };
+        return {
+          ...j,
+          postedAt: j.postedAt ?? scanDates.get(j.url),
+          workLocation: classifyFirst([j.location ?? "", j.role], isLocal),
+          ...(report ? { report } : {}),
+        };
       }),
     applications,
   };
@@ -440,12 +469,8 @@ export function findReportFile(n: string): string | null {
   const target = Number(n);
   const root = careerOpsRoot();
   const app = readApplications().find((a) => parseInt(a.n, 10) === target);
-  const linked = app?.report.match(/\]\(([^)]+)\)/)?.[1];
-  if (linked) {
-    const p = path.resolve(root, "data", linked);
-    // Containment: a hand-edited link must not resolve outside the project.
-    if (p.endsWith(".md") && !isReservedReportFile(p) && containedRealpath(p, root)) return p;
-  }
+  const linked = app ? linkedReportPath(app, root) : null;
+  if (linked) return linked;
   let files: string[];
   try {
     files = fs.readdirSync(path.join(root, "reports"));
@@ -458,6 +483,33 @@ export function findReportFile(n: string): string | null {
   if (!match) return null;
   const p = path.join(root, "reports", match);
   return containedRealpath(p, root) ? p : null;
+}
+
+/** The report file a tracker row links to, or null. */
+function linkedReportPath(app: Application, root: string): string | null {
+  const linked = app.report.match(/\]\(([^)]+)\)/)?.[1];
+  if (!linked) return null;
+  const p = path.resolve(root, "data", linked);
+  // Containment: a hand-edited link must not resolve outside the project.
+  return p.endsWith(".md") && !isReservedReportFile(p) && containedRealpath(p, root) ? p : null;
+}
+
+/** Commute-area place names for the pipeline's Local filter (see work-location.mjs). */
+function readLocalPlaces(root: string): string[] {
+  let portals: unknown = null;
+  let city = "";
+  try {
+    portals = yaml.load(fs.readFileSync(portalsConfigPath(root), "utf8"));
+  } catch {
+    /* no portals.yml: fall back to the profile city */
+  }
+  try {
+    const profile = yaml.load(fs.readFileSync(getProfilePath(root), "utf8")) as { location?: { city?: unknown } } | null;
+    if (typeof profile?.location?.city === "string") city = profile.location.city;
+  } catch {
+    /* no profile */
+  }
+  return localPlaces(portals, city);
 }
 
 /** True containment check: resolves symlinks before comparing, so a link

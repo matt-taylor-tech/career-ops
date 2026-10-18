@@ -20,6 +20,7 @@ import { PageFrame } from "@/components/page-frame";
 import { PIPELINE_TABS, pipelineQuery, pipelineTab } from "@/lib/pipeline-navigation.mjs";
 import { COMPARE_MAX } from "@/lib/pipeline-compare.mjs";
 import { postingHref, postingLabel } from "@/lib/posting-url.mjs";
+import { WORK_LOCATION_FILTERS, workLocationFilter } from "@/lib/work-location.mjs";
 
 type Tab = (typeof PIPELINE_TABS)[number];
 
@@ -60,6 +61,12 @@ export function PipelineView({
   const pSort = params.get("sort") ?? "";
   const sortKey: SortKey = (SORT_KEYS as readonly string[]).includes(pSort) ? (pSort as SortKey) : "score";
   const sort = { key: sortKey, dir: (params.get("dir") === "1" ? 1 : -1) as 1 | -1 };
+  const where = workLocationFilter(params.get("where"));
+  // The location split applies before tabs, so tab counts describe the same view.
+  const locatedApplications = useMemo(
+    () => (where === "all" ? visibleApplications : visibleApplications.filter((r) => r.workLocation === where)),
+    [visibleApplications, where],
+  );
 
   // Search stays LOCAL for snappy typing; seeded from the URL and re-synced only
   // when the URL's q changes (i.e. the assistant set it) — never per keystroke.
@@ -102,7 +109,7 @@ export function PipelineView({
 
   const filtered = useMemo(() => {
     if (tab === "INBOX") return [];
-    let rows = visibleApplications;
+    let rows = locatedApplications;
     if (tab !== "ALL") rows = rows.filter((r) => canonStatus(r.status).includes(tab));
     if (minFilter != null) {
       rows = rows.filter((r) => {
@@ -122,7 +129,7 @@ export function PipelineView({
       scoreNum,
       (row) => companyPresentation(row).label,
     ) as Application[];
-  }, [visibleApplications, tab, q, sort, minFilter]);
+  }, [locatedApplications, tab, q, sort, minFilter]);
 
   const filteredKeys = filtered.map(applicationKey);
   const selectedRows = filtered.filter((r) => selected.has(applicationKey(r)));
@@ -158,8 +165,25 @@ export function PipelineView({
           <h1 className="font-display text-2xl tracking-tight text-landing">Pipeline</h1>
           <p className="mt-1 text-sm text-muted">
             <span className="tabular-nums">{inboxCount}</span> in inbox ·{" "}
-            <span className="tabular-nums">{visibleApplications.length}</span> tracked
+            <span className="tabular-nums">{locatedApplications.length}</span> tracked
           </p>
+        </div>
+        {/* remote / local split: applies to the inbox and every tracker tab */}
+        <div role="group" aria-label="Work location" className="ml-auto inline-flex shrink-0 rounded-lg border border-border bg-surface/40 p-0.5">
+          {WORK_LOCATION_FILTERS.map((w) => (
+            <button
+              key={w}
+              type="button"
+              aria-pressed={where === w}
+              onClick={() => setParams({ where: w === "all" ? null : w })}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors max-sm:min-h-[44px]",
+                where === w ? "bg-brand-soft text-brand" : "text-muted hover:text-foreground",
+              )}
+            >
+              {w}
+            </button>
+          ))}
         </div>
         {/* the tracker has its own search; the inbox brings its own facet filters */}
         {visibleTab !== "INBOX" && (
@@ -182,8 +206,8 @@ export function PipelineView({
             t === "INBOX"
               ? inboxCount
               : t === "ALL"
-                ? visibleApplications.length
-                : visibleApplications.filter((r) => canonStatus(r.status).includes(t)).length;
+                ? locatedApplications.length
+                : locatedApplications.filter((r) => canonStatus(r.status).includes(t)).length;
           return (
             <button
               key={t}
@@ -275,7 +299,7 @@ export function PipelineView({
             </div>
           ) : (
             <>
-              <InboxTriage inbox={inbox} />
+              <InboxTriage inbox={where === "all" ? inbox : inbox.filter((j) => j.workLocation === where)} />
               {inbox.length === 0 && <InboxEmpty tracked={visibleApplications.length} />}
             </>
           )}

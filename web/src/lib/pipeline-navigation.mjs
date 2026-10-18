@@ -1,6 +1,6 @@
 // Carry only the list's own filters through a report URL. Return destinations
 // remain fixed to /pipeline; no arbitrary "returnTo" URL or browser storage.
-const FILTER_KEYS = ["tab", "min", "sort", "dir", "q"];
+const FILTER_KEYS = ["tab", "min", "sort", "dir", "q", "where"];
 
 /**
  * @param {string | Record<string, string | string[] | undefined>} params
