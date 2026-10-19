@@ -29,7 +29,15 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: |
+            web/package-lock.json
+            package-lock.json
+      # Some web tests spawn core scripts (profile-path-doctor-parity runs
+      # doctor.mjs), which import the ROOT packages (js-yaml, dotenv). Without
+      # them doctor.mjs dies on import and those tests fail on empty output.
+      # --ignore-scripts: only the packages are needed, not the root postinstall.
+      - run: npm ci --ignore-scripts
+        working-directory: .
       - run: npm ci
       - run: npm test
       - run: npx tsc --noEmit
