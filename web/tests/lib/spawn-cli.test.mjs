@@ -150,3 +150,32 @@ test("spawnHeadlessCli never lets a child inherit the server's console (windowsH
     assert.equal(options.env, process.env);
   }
 });
+
+// ENAMETOOLONG on Windows: a ~45K-char apply-planner prompt overflowed the
+// 32,767-char command line. Over-long Claude prompts now travel over stdin.
+import { promptToStdinIfTooLong } from "../../src/lib/spawn-cli.mjs";
+
+test("promptToStdinIfTooLong leaves short prompts and other CLIs on argv", () => {
+  const args = ["-p", "short prompt", "--strict-mcp-config"];
+  assert.deepEqual(promptToStdinIfTooLong("claude", "claude", args), { args, stdinText: null });
+  const long = ["-p", "x".repeat(40_000)];
+  assert.deepEqual(promptToStdinIfTooLong("codex", "codex", long), { args: long, stdinText: null });
+});
+
+test("promptToStdinIfTooLong moves an over-long positional Claude prompt to stdin", () => {
+  const prompt = "x".repeat(40_000);
+  const flags = ["--permission-mode", "acceptEdits", "--disallowedTools", "Write,Edit"];
+  assert.deepEqual(promptToStdinIfTooLong("claude", "claude", ["-p", prompt, ...flags]), {
+    args: ["-p", ...flags],
+    stdinText: prompt,
+  });
+  assert.deepEqual(promptToStdinIfTooLong("claude", "claude", ["-p", "--resume", "abc", prompt]), {
+    args: ["-p", "--resume", "abc"],
+    stdinText: prompt,
+  });
+});
+
+test("promptToStdinIfTooLong never moves a long flag value", () => {
+  const args = ["-p", "hi", "--append-system-prompt", "x".repeat(40_000)];
+  assert.deepEqual(promptToStdinIfTooLong("claude", "claude", args), { args, stdinText: null });
+});

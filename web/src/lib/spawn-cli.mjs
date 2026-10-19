@@ -61,7 +61,9 @@ export function spawnHeadlessCli(binPath, args, options, fencing) {
   // On Windows an npm-installed CLI is a script shim spawn() cannot run without a
   // shell, so launch the .js/.exe it wraps (a no-op elsewhere; cli-launch.mjs).
   // After fencing, so the fencers see the CLI's own argv rather than node's.
-  const launch = prepareCliLaunch(binPath, fencedArgs);
+  // After fencing too: the fencers verify the argv the caller spelled.
+  const { args: launchArgs, stdinText } = promptToStdinIfTooLong(fencing.cliId, binPath, fencedArgs);
+  const launch = prepareCliLaunch(binPath, launchArgs);
   // windowsHide: on Windows a child attaches to the parent's console. A
   // long-lived dev server whose console has gone stale then kills EVERY child
   // at DLL init with 0xC0000142 (STATUS_DLL_INIT_FAILED), in ~20 ms and with no
@@ -69,6 +71,36 @@ export function spawnHeadlessCli(binPath, args, options, fencing) {
   // Nothing spawned here needs a console, so never inherit one. Set after the
   // caller's options so no caller can opt back in. No-op on POSIX (#3809).
   const child = spawn(launch.command, launch.args, { ...options, windowsHide: true });
-  child.stdin?.end();
+  if (stdinText != null) child.stdin?.end(stdinText);
+  else child.stdin?.end();
   return child;
+}
+
+// Windows caps a whole command line at 32,767 UTF-16 units (CreateProcess); past
+// it spawn() fails with ENAMETOOLONG before the CLI starts. The apply planner's
+// prompt carries the memory file and tailored CV and runs to ~45K chars, so it
+// failed on Windows while running fine on macOS. The margin covers quoting.
+const ARGV_BUDGET = 30_000;
+
+/**
+ * Move an over-long Claude prompt from argv to stdin. `claude -p` with no
+ * positional prompt reads it from stdin, so the run is otherwise identical.
+ * Only when the command line would overflow, so short prompts are untouched.
+ * Only the positional prompt moves (right after `-p`, or after `--resume <id>`):
+ * a long flag VALUE cannot come from stdin, so that case still fails loudly.
+ * Other CLIs pass through; their stdin handling is not verified.
+ *
+ * @param {string} cliId
+ * @param {string} binPath
+ * @param {string[]} args
+ * @returns {{args: string[], stdinText: string | null}}
+ */
+export function promptToStdinIfTooLong(cliId, binPath, args) {
+  const length = binPath.length + args.reduce((n, a) => n + a.length + 3, 0);
+  if (cliId !== "claude" || length <= ARGV_BUDGET) return { args, stdinText: null };
+  let i = 0;
+  for (let j = 1; j < args.length; j++) if (args[j].length > args[i].length) i = j;
+  const positional = args[i - 1] === "-p" || (args[i - 2] === "--resume" && args[i - 3] === "-p");
+  if (!positional) return { args, stdinText: null };
+  return { args: [...args.slice(0, i), ...args.slice(i + 1)], stdinText: args[i] };
 }
