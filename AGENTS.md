@@ -82,8 +82,6 @@ git push origin main
 
 When the user asks to "update career-ops" or "check for updates", show what's new with `git fetch upstream && git log --oneline main..upstream/main`, then offer the merge above. After a merge that touches `web/`, rebuild the web UI (`cd web && npm run build`) and restart it.
 
-This fork has no symlinks: the six CLI skill entrypoints (`.claude/`, `.opencode/`, `.qwen/`, `.antigravitycli/`, `.grok/`, `.kimi/` → `skills/career-ops/SKILL.md`) are real copies of `.agents/skills/career-ops/SKILL.md`. After a merge that changes the canonical skill, or that brings any of them back as symlinks, re-copy it over all six; `test-all.mjs` fails on a stale copy.
-
 ## What is career-ops
 
 AI-powered, CLI-agnostic job search automation: pipeline tracking, offer evaluation, CV generation, portal scanning, batch processing. Runs on any AI coding CLI following the [open agent skill standard](https://agentskills.io) (Claude Code, Cursor, Codex, OpenCode, Pi, Qwen, Copilot, Kimi, Antigravity CLI, Grok Build CLI). Legacy Gemini API evaluation remains via `gemini-eval.mjs`.
