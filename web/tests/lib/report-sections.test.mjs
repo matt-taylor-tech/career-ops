@@ -261,3 +261,12 @@ test("sectionPreview prefers prose next to a table and counts a wide table", () 
   assert.equal(sectionPreview("| Gap | Severity | Mitigation |\n|---|---|---|\n| SQL | Low | Course |\n| K8s | Mid | Lab |"), "2 rows");
   assert.equal(sectionPreview("| # | Situation | S | T | A | R | STAR story |\n|---|---|---|---|---|---|---|\n| 1 | a | b | c | d | e | f |"), "1 interview story");
 });
+
+test("splitSections reads a CRLF report the same as an LF one", () => {
+  const lf = "# Title\n\nIntro line.\n\n## A) Role Summary\n\nBody.\n\n## Verdict (lead)\n\nApply.\n";
+  const crlf = lf.replace(/\n/g, "\r\n");
+  const a = splitSections(lf);
+  const b = splitSections(crlf);
+  assert.deepEqual(b.sections.map((s) => s.heading), ["A) Role Summary", "Verdict (lead)"]);
+  assert.deepEqual(b.sections.map((s) => s.content), a.sections.map((s) => s.content));
+});

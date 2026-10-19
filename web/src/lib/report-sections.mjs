@@ -221,7 +221,9 @@ export function splitSections(body) {
   const sections = [];
   /** @type {{ heading: string, letter: string | null, lines: string[] } | null} */
   let cur = null;
-  for (const line of body.split("\n")) {
+  // \r?\n: a CRLF line left "\r" on every heading, so `(.*)$` never matched and
+  // the whole report fell into the intro (and from there into the verdict card).
+  for (const line of body.split(/\r?\n/)) {
     const h = line.match(/^##\s+(.*)$/);
     if (h) {
       if (cur) sections.push({ heading: cur.heading, letter: cur.letter, content: cur.lines.join("\n").trim() });

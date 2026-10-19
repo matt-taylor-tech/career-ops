@@ -535,8 +535,10 @@ export function readReport(n: string): ReportData | null {
   if (!file) return null;
   try {
     // Reports live in the user's runtime checkout, outside the web build graph.
+    // CRLF → LF: an agent editing a report on Windows can save it with CRLF, and
+    // every report parser downstream splits on "\n" and anchors headings at "$".
     return {
-      content: fs.readFileSync(/* turbopackIgnore: true */ file, "utf8"),
+      content: fs.readFileSync(/* turbopackIgnore: true */ file, "utf8").replace(/\r\n?/g, "\n"),
       file: path.basename(file),
     };
   } catch (err) {
