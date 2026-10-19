@@ -8,7 +8,6 @@ import { ATS_LABEL } from "@/lib/explore";
 import { unscoredInboxHref } from "@/lib/posting-url.mjs";
 import { Badge } from "@/components/ui/badge";
 import { CompanyLogo } from "@/components/company-logo";
-import { ReplaceLinkButton } from "@/components/replace-link-button";
 import { cn } from "@/lib/cn";
 import { inboxScoreTarget } from "@/lib/inbox-score-target.mjs";
 
@@ -95,8 +94,6 @@ export function TriageRow({
           {!evaluated && <span className="italic text-muted">not scored</span>}
         </p>
       </div>
-
-      <ReplaceLinkButton target="inbox" url={job.url} compact />
 
       {/* EVALUADA state (right-aligned, visually distinct from raw rows) */}
       {evaluated && target.href ? (

@@ -5,7 +5,7 @@
  * the inbox while their reports were intact.
  *
  * A report claims a URL through its header lines only: `**URL:**`,
- * `**Previous URL:**` (written by Replace link) and a `Source` / `Source listing`
+ * `**Previous URL:**` (left by the retired Replace link button) and a `Source` / `Source listing`
  * line, optionally block-quoted (the aggregator copy an evaluation started from).
  */
 import fs from "node:fs";
