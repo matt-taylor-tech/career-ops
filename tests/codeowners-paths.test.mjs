@@ -54,12 +54,17 @@ ok('the plugin registry directory is owned, not the deleted single file', () => 
 // The router is whatever the CLI skill entrypoints actually link to, read from
 // the links themselves so a moved router fails here rather than going unowned.
 // A checkout without symlink support (Windows, core.symlinks=false) holds each
-// link as a one-line file naming its target, so read that form too.
+// link as a one-line file naming its target, so read that form too. A
+// materialized entrypoint (a full copy of the canonical skill, as
+// skill-entrypoints.mjs writes) links to the canonical router by content.
+const CANONICAL_SKILL = '.agents/skills/career-ops/SKILL.md';
+const canonicalText = existsSync(join(ROOT, CANONICAL_SKILL)) ? readFileSync(join(ROOT, CANONICAL_SKILL), 'utf-8') : null;
 function linkTarget(p) {
   const abs = join(ROOT, p);
   if (!existsSync(abs)) return null;
   if (lstatSync(abs).isSymbolicLink()) return readlinkSync(abs);
   const text = readFileSync(abs, 'utf-8');
+  if (p !== CANONICAL_SKILL && canonicalText !== null && text === canonicalText) return `../../../${CANONICAL_SKILL}`;
   return text.length < 200 && /^[^\n]+SKILL\.md\s*$/.test(text) ? text.trim() : null;
 }
 const skillLinks = readdirSync(ROOT)

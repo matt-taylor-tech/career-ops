@@ -530,6 +530,7 @@ const SYSTEM_PATHS = [
   '.opencode/commands/',
   '.claude-plugin/',
   '.codex-plugin/',
+  '.codex/config.toml',
   '.qwen/',
   '.antigravitycli/skills/',
   '.grok/skills/',
