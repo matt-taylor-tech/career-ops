@@ -5,6 +5,7 @@ import { careerOpsRoot, readMemory } from "@/lib/career-ops";
 import { getSession } from "@/lib/apply/session";
 import { resolveSessionCv } from "@/lib/apply/cv";
 import { applyCvSource } from "@/lib/apply/cv-source.mjs";
+import { saveApplicationAnswers } from "@/lib/apply/save-answers.mjs";
 import { buildAnswerPrompt } from "@/lib/apply/answer-prompt.mjs";
 import { runPlanner } from "@/lib/apply/planner";
 import { extractJsonObject } from "@/lib/extract-json-object.mjs";
@@ -133,6 +134,14 @@ export async function POST(req: Request) {
       }
       const count = Object.keys(obj).length;
       log(`Parsed ${count} answers${truncated ? " (RECOVERED from truncated output — some fields may be missing)" : ""}`);
+      // Keep the draft on disk in the job folder; until now it lived only in
+      // the tab and this server's memory (Matt's fork).
+      try {
+        const saved = saveApplicationAnswers({ root: careerOpsRoot(), cvPath, title: s.title, url: s.url, stage: "prefill", fields: s.fields, answers: obj });
+        log("path" in saved ? `Saved answers: ${saved.path}` : `Answers not saved: ${saved.skipped}`);
+      } catch (e) {
+        log(`Answers not saved: ${e instanceof Error ? e.message : String(e)}`);
+      }
       emit({ t: "done", answers: obj, truncated, count });
       controller.close();
     },

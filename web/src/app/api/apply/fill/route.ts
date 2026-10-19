@@ -2,6 +2,8 @@ import { fillSession, handoffSession, getSession } from "@/lib/apply/session";
 import { resolveSessionCv } from "@/lib/apply/cv";
 import type { ApplyField } from "@/lib/apply/extract";
 import { readJsonObject } from "@/lib/json-body";
+import { careerOpsRoot } from "@/lib/career-ops";
+import { saveApplicationAnswers } from "@/lib/apply/save-answers.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,8 +31,17 @@ export async function POST(req: Request) {
 
   try {
     const result = await fillSession(sessionId, answers, fields, cvPath);
+    // The reviewed answers replace the pre-fill draft in the job folder. A
+    // failed save never fails the fill.
+    let answersSaved: string | null = null;
+    try {
+      const saved = saveApplicationAnswers({ root: careerOpsRoot(), cvPath, title: session?.title, url: session?.url, stage: "filled", fields: session?.fields ?? fields, answers });
+      if ("path" in saved) answersSaved = saved.path;
+    } catch {
+      /* best effort */
+    }
     if (handoff) await handoffSession(sessionId).catch(() => {});
-    return Response.json({ ...result, handedOff: !!handoff, cvAttached: !!cvPath });
+    return Response.json({ ...result, handedOff: !!handoff, cvAttached: !!cvPath, answersSaved });
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message.slice(0, 200) : "fill failed" }, { status: 500 });
   }
