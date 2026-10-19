@@ -48,6 +48,7 @@ export function ReportView({
   id,
   app,
   report,
+  file,
   canDelete = false,
   pdfReadyFromIndex = false,
   coverReady = false,
@@ -57,8 +58,8 @@ export function ReportView({
   id: string;
   app: Application | null;
   report: string | null;
-  /** kept in the props contract (the page passes it) but no longer surfaced —
-   *  the raw .md filename is a dev artifact, not header content. */
+  /** Not shown in the header (the raw .md filename is a dev artifact); read only
+   *  for the report number the CV link asks for. */
   file?: string | null;
   canDelete?: boolean;
   pdfReadyFromIndex?: boolean;
@@ -105,7 +106,7 @@ export function ReportView({
 
         <div className="mt-4 flex flex-wrap items-center gap-2.5">
           {app && <StatusSelect n={id} current={app.status} />}
-          <GeneratePdfButton n={id} company={app?.company ?? meta?.title ?? id} pdfReady={pdfReady} />
+          <GeneratePdfButton n={id} reportNum={file?.match(/^(\d+)-/)?.[1]} company={app?.company ?? meta?.title ?? id} pdfReady={pdfReady} />
           {app && report && <CoverDraftButton n={id} company={companyName} />}
           {applyHref && (
             <Link

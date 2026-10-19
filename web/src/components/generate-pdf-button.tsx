@@ -11,7 +11,11 @@ import { pdfButtonState, type PdfFailure } from "@/lib/pdf-button-state.mjs";
 // ATS-optimized CV tailored to THIS offer → output/cv-… + marks the tracker.
 // Once a tailored CV exists (tracker PDF ✅, or a pdf worker just finished), it
 // becomes a "View tailored CV" link (served by /api/cv-pdf) + a regenerate icon.
-export function GeneratePdfButton({ n, company, pdfReady }: { n: string; company: string; pdfReady: boolean }) {
+// `n` is the page id: a tracker row number when the row exists. The PDF index
+// is keyed by REPORT number, and the two differ when a row links another
+// report (row 141 → report 143), so the view link asks by the report the page
+// actually shows, with the row as the fallback (Matt's fork).
+export function GeneratePdfButton({ n, reportNum, company, pdfReady }: { n: string; reportNum?: string; company: string; pdfReady: boolean }) {
   const { jobs, startJob } = useJobs();
   const job = useMemo(
     () => jobs.filter((j) => j.kind === "pdf" && j.input === n).sort((a, b) => b.startedAt - a.startedAt)[0],
@@ -33,7 +37,7 @@ export function GeneratePdfButton({ n, company, pdfReady }: { n: string; company
     return (
       <span className="inline-flex flex-wrap items-center gap-1">
         <a
-          href={`/api/cv-pdf?n=${encodeURIComponent(n)}&company=${encodeURIComponent(company)}`}
+          href={`/api/cv-pdf?n=${encodeURIComponent(reportNum ?? n)}&application=${encodeURIComponent(n)}&company=${encodeURIComponent(company)}`}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center justify-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-500/15 dark:text-emerald-400 max-sm:min-h-[44px]"
