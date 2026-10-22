@@ -9,7 +9,10 @@ if (-not (Test-Path -LiteralPath $script)) {
   throw "Scheduled job runner not found: $script"
 }
 
-$action = New-ScheduledTaskAction -Execute $node -Argument "`"$script`"" -WorkingDirectory $root
+# conhost --headless runs node without flashing a console window every 15 minutes
+# (it does not propagate node's exit code; run history lives in scheduled-jobs.json).
+$conhost = Join-Path $env:WINDIR 'System32\conhost.exe'
+$action = New-ScheduledTaskAction -Execute $conhost -Argument "--headless `"$node`" `"$script`"" -WorkingDirectory $root
 $start = (Get-Date).AddMinutes(1)
 $trigger = New-ScheduledTaskTrigger -Once -At $start -RepetitionInterval (New-TimeSpan -Minutes 15)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 2)
@@ -18,7 +21,10 @@ $principal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.Wind
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description 'Career Ops scheduled-jobs queue worker every 15 minutes (local-only, zero-token; current user must be logged in)' -Force | Out-Null
 $registered = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
 $actual = $registered.Principal
-if ($actual.UserId -ne $principal.UserId -or $actual.LogonType.ToString() -notin @('Interactive', 'InteractiveToken') -or $actual.RunLevel.ToString() -ne 'Limited') {
+# Task Scheduler may store the bare user name without the DOMAIN\ prefix.
+$expectedUser = $principal.UserId -replace '^.*\\', ''
+$actualUser = $actual.UserId -replace '^.*\\', ''
+if ($actualUser -ne $expectedUser -or $actual.LogonType.ToString() -notin @('Interactive', 'InteractiveToken') -or $actual.RunLevel.ToString() -ne 'Limited') {
   throw "Scheduled task '$taskName' has an unexpected security context (UserId=$($actual.UserId), LogonType=$($actual.LogonType), RunLevel=$($actual.RunLevel)); refusing to continue."
 }
 Write-Output "Installed '$taskName' for $($principal.UserId) (interactive; the user must be logged in)."
