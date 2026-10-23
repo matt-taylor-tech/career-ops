@@ -14,6 +14,7 @@ import { parseInbox, splitLines } from "@/lib/pipeline-table.mjs";
 // One definition of the `{n}-RESERVED.md` convention, shared with
 // run-cli-support.mjs — see report-files.mjs for why it lives there.
 import { isReservedReportFile } from "@/lib/report-files.mjs";
+import { firstMarkdownLinkTarget } from "@/lib/posting-url.mjs";
 import { resolvePdfIndexPath } from "@/lib/core/pdf-index";
 // Pure parser, no I/O — shared with the apply flow's CV resolver so the two
 // don't drift into two different definitions of "which report does this
@@ -31,6 +32,7 @@ import {
 // module, so rememberFact() (the block's only WRITER) and readMemory() (its
 // reader) cannot drift apart, and so the read rule is testable from web/tests.
 import { NOTES_START, NOTES_END, profilePath as profileMemoryPath, readProfileMemory } from "@/lib/profile-memory.mjs";
+import { normalizeMemoryFact } from "@/lib/memory-fact.mjs";
 
 /**
  * Resolve the career-ops "home" — the directory holding the user's sibling
@@ -487,7 +489,7 @@ export function findReportFile(n: string): string | null {
 
 /** The report file a tracker row links to, or null. */
 function linkedReportPath(app: Application, root: string): string | null {
-  const linked = app.report.match(/\]\(([^)]+)\)/)?.[1];
+  const linked = firstMarkdownLinkTarget(app.report);
   if (!linked) return null;
   const p = path.resolve(root, "data", linked);
   // Containment: a hand-edited link must not resolve outside the project.
@@ -570,7 +572,7 @@ export function readMemory(): string {
 /** Append a durable fact to the canonical modes/_profile.md (creating the file +
  *  managed block if needed), PRESERVING existing user content. */
 export function rememberFact(fact: string): "ok" | "deduped" | "error" {
-  const f = fact.trim().replace(/\s+/g, " ").slice(0, 300);
+  const f = normalizeMemoryFact(fact);
   if (!f) return "deduped";
   const p = profilePath();
   try {

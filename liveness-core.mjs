@@ -83,6 +83,15 @@ const HARD_EXPIRED_PATTERNS = [
   /ce poste n'est plus (disponible|a pourvoir|ouvert)/i,
   /recrutement (termine|cloture)/i,
   /candidatures (closes|cloturees)/i,
+  // Polish (pracuj.pl and boards on the same layout keep an archived offer
+  // online, "Aplikuj" button included, and say it is closed only in a banner).
+  // Spelled in the normalized alphabet: normalizeForMatch() folds ą/ń/ż but
+  // not ł, which NFD does not decompose, hence the [łl] classes.
+  /og[łl]oszenie wygas[łl]o/i,
+  /pracodawca zakonczy[łl] zbieranie zg[łl]oszen/i,
+  /oferta (jest )?nieaktualna/i,
+  /oferta archiwalna/i,
+  /kandydaci nie sa juz akceptowani/i,
 ];
 
 const LISTING_PAGE_PATTERNS = [
@@ -160,12 +169,49 @@ const APPLY_PATTERNS = [
   // most getManfred postings, closed ones too, have an FAQ button such as
   // "¿Puedo aplicar si vivo fuera de España?".
   /\bapuntame\b/i,
+  // Spanish (HiringRoom): "Postularse". The label, not the verb: every HiringRoom
+  // posting also links a help article, "¿Cómo me postulo?" ("how do I apply?").
+  /\bpostularse\b/i,
   // Chinese MokaHR and Feishu Jobs detail pages use these exact control texts.
   // Keep them narrow: bare “申请” appears in descriptive prose, while longer
   // labels containing “投递” can be status/history controls rather than Apply.
   /^申请职位$/,
   /^投递$/,
+  // Vietnamese (CareerViet): "NỘP ĐƠN ỨNG TUYỂN". NFD leaves Đ/đ as is, so the
+  // first letter of "đơn" is matched explicitly. This label alone proves
+  // nothing: a closed CareerViet posting keeps its whole page and this button,
+  // which is why the deadline check in classifyLiveness runs before the apply
+  // control is read.
+  /\bnop [dđ]on ung tuyen\b/i,
 ];
+
+// CareerViet prints the application deadline in the posting's info block as
+// "Hết hạn nộp 30/11/2026" and shows nothing else once it has passed (#4832).
+// After normalizeForMatch: "het han nop 30/11/2026". Day first, in Vietnam's
+// calendar. Only the first occurrence counts: it is the posting's own block,
+// and a later one could belong to a related-jobs card.
+const DEADLINE_PATTERN = /\bhet han nop\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\b/i;
+const DEADLINE_TIME_ZONE = 'Asia/Ho_Chi_Minh';
+
+// True when the posting's stated deadline is before today. The deadline day
+// itself is still open, and an impossible date (31/02) says nothing, so it is
+// not read as a closure: a false `expired` costs the posting every later scan.
+function deadlinePassed(bodyText, now) {
+  const match = DEADLINE_PATTERN.exec(bodyText);
+  if (!match) return null;
+  const [day, month, year] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const deadline = new Date(Date.UTC(year, month - 1, day));
+  if (deadline.getUTCFullYear() !== year || deadline.getUTCMonth() !== month - 1 || deadline.getUTCDate() !== day) return null;
+  // Built from formatToParts: the field order of a formatted date is locale
+  // data, and en-CA has rendered MM/DD/YYYY on some ICU builds.
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: DEADLINE_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now);
+  const part = (type) => parts.find((p) => p.type === type).value;
+  const today = `${part('year')}-${part('month')}-${part('day')}`;
+  const isoDeadline = deadline.toISOString().slice(0, 10);
+  return isoDeadline < today ? match[0] : null;
+}
 
 const MIN_CONTENT_CHARS = 300;
 
@@ -222,7 +268,7 @@ function hasApplyControl(controls = []) {
   return controls.some((control) => APPLY_PATTERNS.some((pattern) => pattern.test(control)));
 }
 
-export function classifyLiveness({ status = 0, requestedUrl = '', finalUrl = '', bodyText: rawBodyText = '', applyControls: rawApplyControls = [] } = {}) {
+export function classifyLiveness({ status = 0, requestedUrl = '', finalUrl = '', bodyText: rawBodyText = '', applyControls: rawApplyControls = [], now = new Date() } = {}) {
   const bodyLines = normalizeForMatch(rawBodyText, { keepLineBreaks: true });
   const bodyText = bodyLines.replace(/\n/g, ' ');
   const applyControls = (Array.isArray(rawApplyControls) ? rawApplyControls : []).map((control) => normalizeForMatch(control));
@@ -282,6 +328,14 @@ export function classifyLiveness({ status = 0, requestedUrl = '', finalUrl = '',
       code: 'redirected_off_posting',
       reason: `redirected to ${finalUrl} — job id "${jobId}" missing from final URL`,
     };
+  }
+
+  // A stated deadline in the past closes the posting even though the page and
+  // its Apply button are intact (CareerViet, #4832). Read after the redirect
+  // guard: on a listing page the date belongs to some other job's card.
+  const pastDeadline = deadlinePassed(bodyText, now);
+  if (pastDeadline) {
+    return { result: 'expired', code: 'deadline_passed', reason: `application deadline passed: ${pastDeadline}` };
   }
 
   if (hasApplyControl(applyControls)) {

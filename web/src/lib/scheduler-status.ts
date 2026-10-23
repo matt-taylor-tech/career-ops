@@ -5,10 +5,12 @@ import { promisify } from "node:util";
 import { careerOpsRoot } from "@/lib/career-ops";
 import { resolveCodeRoot } from "@/lib/core/code-root.mjs";
 import { readLockStatus } from "./scheduled-jobs-store.mjs";
+import { osScheduleStatus } from "./scheduled-os-schedule.mjs";
 import { scheduledRunnerResourcePath, scheduledStorePath } from "./scheduled-runner-path.mjs";
 
 const execFileAsync = promisify(execFile);
 const TASK_NAME = "career-ops recurring scan";
+const LAUNCHD_LABEL = "io.career-ops.scheduled-scan";
 
 export type SchedulerStatus = {
   platform: NodeJS.Platform;
@@ -23,57 +25,44 @@ export type SchedulerStatus = {
   };
 };
 
-// macOS: the launchd agent from web/scripts/install-scan-schedule.sh. launchd
-// keeps no next/last-run times, so the last run is the agent log's mtime (the
-// runner writes to it every interval) and the next is that plus the interval.
-const LAUNCHD_LABEL = "com.career-ops.recurring-scan";
-// Fallback only; the real interval is read from the installed plist.
-const LAUNCHD_DEFAULT_INTERVAL_MS = 60 * 60 * 1_000;
+const EMPTY_TASK: SchedulerStatus["task"] = { exists: false, enabled: false, status: null, nextRun: null, lastRun: null };
 
-function launchdIntervalMs(): number {
+function readTickMtimeMs(): number | null {
   try {
-    const plist = fs.readFileSync(path.join(process.env.HOME ?? "", "Library", "LaunchAgents", `${LAUNCHD_LABEL}.plist`), "utf8");
-    const secs = Number(plist.match(/<key>StartInterval<\/key>\s*<integer>(\d+)<\/integer>/)?.[1]);
-    return Number.isFinite(secs) && secs > 0 ? secs * 1_000 : LAUNCHD_DEFAULT_INTERVAL_MS;
+    return fs.statSync(scheduledStorePath(careerOpsRoot()) + ".tick").mtimeMs;
   } catch {
-    return LAUNCHD_DEFAULT_INTERVAL_MS;
+    return null;
   }
 }
 
-async function readLaunchdTask(): Promise<SchedulerStatus["task"]> {
-  const none = { exists: false, enabled: false, status: null, nextRun: null, lastRun: null };
+async function readUnixTask(platform: "darwin" | "linux"): Promise<SchedulerStatus["task"]> {
+  const tickMtimeMs = readTickMtimeMs();
+  const now = new Date();
+  if (platform === "linux") {
+    let crontabText = "";
+    try {
+      crontabText = (await execFileAsync("crontab", ["-l"], { timeout: 5_000 })).stdout;
+    } catch {
+      // No crontab, or crontab is missing: nothing is installed.
+    }
+    return osScheduleStatus({ platform, crontabText, launchctlExitCode: null, tickMtimeMs, now });
+  }
+
   const uid = process.getuid?.();
-  if (uid === undefined) return none;
-  const domain = `gui/${uid}`;
+  if (uid === undefined) return { ...EMPTY_TASK };
+  let launchctlExitCode = 0;
   try {
-    await execFileAsync("launchctl", ["print", `${domain}/${LAUNCHD_LABEL}`], { timeout: 5_000, maxBuffer: 256 * 1024 });
+    await execFileAsync("launchctl", ["print", `gui/${uid}/${LAUNCHD_LABEL}`], { timeout: 5_000 });
   } catch {
-    return none;
+    // launchctl exits non-zero (113) when the job is not loaded; only zero matters.
+    launchctlExitCode = 1;
   }
-  let enabled = true;
-  try {
-    const { stdout } = await execFileAsync("launchctl", ["print-disabled", domain], { timeout: 5_000, maxBuffer: 256 * 1024 });
-    if (new RegExp(`"${LAUNCHD_LABEL.replace(/\./g, "\\.")}"\\s*=>\\s*(true|disabled)`).test(stdout)) enabled = false;
-  } catch {
-    /* unknown: keep enabled */
-  }
-  let lastRun: string | null = null;
-  let nextRun: string | null = null;
-  try {
-    const mtime = fs.statSync(path.join(process.env.HOME ?? "", "Library", "Logs", "career-ops-scan.log")).mtime;
-    lastRun = mtime.toISOString();
-    if (enabled) nextRun = new Date(mtime.getTime() + launchdIntervalMs()).toISOString();
-  } catch {
-    /* no run logged yet */
-  }
-  return { exists: true, enabled, status: enabled ? "Loaded" : "Disabled", nextRun, lastRun };
+  return osScheduleStatus({ platform, crontabText: "", launchctlExitCode, tickMtimeMs, now });
 }
 
 async function readTask(): Promise<SchedulerStatus["task"]> {
-  if (process.platform === "darwin") return readLaunchdTask();
-  if (process.platform !== "win32") {
-    return { exists: false, enabled: false, status: null, nextRun: null, lastRun: null };
-  }
+  if (process.platform === "darwin" || process.platform === "linux") return readUnixTask(process.platform);
+  if (process.platform !== "win32") return { ...EMPTY_TASK };
 
   const script = [
     `$task = Get-ScheduledTask -TaskName '${TASK_NAME}' -ErrorAction SilentlyContinue`,

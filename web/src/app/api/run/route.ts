@@ -21,6 +21,7 @@ import { capabilitiesFor } from "@/lib/worker-capabilities.mjs";
 import { fencingReport, isCliAllowedForCapabilities } from "@/lib/cli-fencing.mjs";
 import { claudeCliArgs } from "@/lib/claude-invocation.mjs";
 import { resolveCvTemplate } from "@/lib/core/cv-template.mjs";
+import { profileRef } from "@/lib/core/profile-path.mjs";
 import { acquireTrackerWrite, releaseTrackerWrite } from "@/lib/core/run-registry";
 import { createRunFinalizer } from "@/lib/run-finalizer.mjs";
 import { readJsonObject } from "@/lib/json-body";
@@ -141,7 +142,7 @@ export async function POST(req: Request) {
   // prompt used to name the base template outright, silently ignoring cv.template
   // (#4034). Only pdf fills a template, so nothing else pays for the lookup.
   // The roots are passed, not re-derived: a relative CAREER_OPS_PROFILE resolves
-  // against the checkout, and `process.cwd()` here is `<core>/web` (see cv-template.mjs).
+  // against the data root, and `process.cwd()` here is `<core>/web` (see cv-template.mjs).
   const cvTemplate = kind === "pdf" ? await resolveCvTemplate(careerOpsRoot(), codeRoot()) : undefined;
   // The worker's cwd is the data root. When the checkout is elsewhere (Custom
   // Data Directory layout) the prompt is prefixed with where modes/templates/
@@ -159,6 +160,7 @@ export async function POST(req: Request) {
       cvTemplate,
       reportFile: pdfPaths?.reportFile ?? (coverRequest?.ok ? coverRequest.reportFile : undefined),
       coverBrief: coverRequest?.ok ? coverRequest.brief : undefined,
+      profile: profileRef(careerOpsRoot()),
     });
 
   const isClaude = cliId === "claude";

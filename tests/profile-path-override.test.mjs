@@ -199,7 +199,7 @@ try {
   }
 
   // A data-root profile that exists does not make the .env override harmless:
-  // scan.mjs reads the file the .env names, the other readers read this one.
+  // scan.mjs, the evaluators, openai-tailor.mjs and openrouter-runner.mjs read the file the .env names, the other readers read this one.
   const bothRoot = join(scratch, 'both-root');
   mkdirSync(join(bothRoot, 'config'), { recursive: true });
   writeFileSync(join(bothRoot, 'config', 'profile.yml'), 'candidate:\n  full_name: Root\n', 'utf-8');
@@ -316,27 +316,7 @@ try {
   // web/ resolves its own root and carries its own helper; this scan is the
   // core's. career-profile.mjs reads data/career-profile.yml, a different file.
   const EXEMPT = new Set(['path-resolver.mjs', 'career-profile.mjs']);
-  const PENDING = new Set([
-    'batch-evaluate-gemini.mjs',
-    'browser-extract.mjs',
-    'build-cv-html.mjs',
-    'check-table-freshness.mjs',
-    'cv-sync-check.mjs',
-    'gemini-eval.mjs',
-    'generate-pdf.mjs',
-    'github-evidence.mjs',
-    'ollama-eval.mjs',
-    'openai-eval.mjs',
-    'openai-tailor.mjs',
-    'openrouter-runner.mjs',
-    'prepare-application.mjs',
-    'providers/_profile-keywords.mjs',
-    'salary-gap.mjs',
-    'scripts/export-ats-text.mjs',
-    'theme-style.mjs',
-    'update-system.mjs',
-    'upskill.mjs',
-  ]);
+  const PENDING = new Set([]);
   const HAND_BUILT = [
     /(?<!delete\s)process\.env\.CAREER_OPS_PROFILE(?!\s*=[^=])/,   // a read; deleting it (doctor.mjs, undoing a .env load) is not a path
     /\b(?:join|resolve)\([^\n]*['"](?:config\/)?profile\.yml['"]/,

@@ -11,6 +11,7 @@ import { resolveScanTimeoutMs, scanTimeoutMessage } from "./scan-timeout.mjs";
 import { ATS_LABEL, ATS_SOURCES, type AtsSource, type DiscoveredOffer, type ExploreFilters, type FitBand, type ScanEvent } from "@/lib/explore";
 import { mergeScanResults, timedOutMessage } from "./scan-merge.mjs";
 import { parseScanJsonStdout } from "./scan-json.mjs";
+import { scannerArgs } from "./scan-args.mjs";
 
 export type { DiscoveredOffer, ScanEvent, AtsSource } from "@/lib/explore";
 export { ATS_SOURCES } from "@/lib/explore";
@@ -144,18 +145,6 @@ export function scannerSupportsJson(): boolean {
   }
 }
 
-// Same probe for --shuffle. Explore runs --dry-run with a per-source cap, and without
-// --shuffle every cast took the dataset's alphabetical prefix, so re-casting with
-// the same filters searched the exact same companies. A random sample per cast
-// means "re-cast to look deeper" actually reaches new companies.
-export function scannerSupportsShuffle(): boolean {
-  try {
-    return fs.readFileSync(rootScript("scan-ats-full"), "utf8").includes("--shuffle");
-  } catch {
-    return false;
-  }
-}
-
 type JsonOffer = { company?: string; title?: string; url?: string; location?: string | null; postedAt?: string | null; source?: string };
 type ScanJson = {
   companiesAvailable?: number;
@@ -210,16 +199,8 @@ function runScanner(
   return new Promise((resolve) => {
     const args = [
       rootScript("scan-ats-full"),
-      "--dry-run",
-      "--since",
-      String(Math.max(1, filters.sinceDays || 7)),
-      "--ats",
-      ats.join(","),
-      "--limit",
-      String(Math.max(1, filters.limitPerAts || 150)),
+      ...scannerArgs({ ats, json: useJson, sinceDays: filters.sinceDays, limitPerAts: filters.limitPerAts }),
     ];
-    if (useJson) args.push("--json");
-    if (scannerSupportsShuffle()) args.push("--shuffle");
 
     const child = spawn(process.execPath, args, {
       cwd: careerOpsRoot(),
