@@ -107,7 +107,9 @@ export function spawnGeneratePdf({ spawnFn, execPath, root, codeRoot = root, htm
       // hard-fail every web-triggered render — same bypass a human already
       // applies manually via the CLI when this diverges.
       [path.join(codeRoot, "generate-pdf.mjs"), html, finalPdf, `--format=${format}`, `--report=${reportNum}`, "--allow-reorder"],
-      { cwd: root },
+      // windowsHide: see api/doctor/route.ts — a stale inherited console
+      // kills every child with 0xC0000142 on Windows; never inherit one.
+      { cwd: root, windowsHide: true },
     );
     let stderr = "";
     child.stderr.on("data", (d) => { stderr += d.toString(); });
@@ -128,7 +130,7 @@ export function spawnGeneratePdf({ spawnFn, execPath, root, codeRoot = root, htm
  */
 export function markTrackerReady({ spawnFn, execPath, root, codeRoot = root, reportNum }) {
   return new Promise((resolve) => {
-    const child = spawnFn(execPath, [path.join(codeRoot, "mark-pdf-ready.mjs"), reportNum, "--json"], { cwd: root });
+    const child = spawnFn(execPath, [path.join(codeRoot, "mark-pdf-ready.mjs"), reportNum, "--json"], { cwd: root, windowsHide: true });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (d) => { stdout += d.toString(); });

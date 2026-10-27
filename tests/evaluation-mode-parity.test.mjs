@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { ROOT, rmSync } from './helpers.mjs';
-import { FROZEN_EVALUATION_MODES, KNOWN_EVALUATION_MODES, discoverEvaluationModes, readModeText, structuralGaps } from './evaluation-mode-parity-helpers.mjs';
+import { FROZEN_EVALUATION_MODES, KNOWN_EVALUATION_MODES, discoverEvaluationModes, keywordCoverageGaps, readModeText, structuralGaps } from './evaluation-mode-parity-helpers.mjs';
 
 const REPORT = `# 評価: {Company} — {Role}
 
@@ -58,6 +58,40 @@ test('frozen locales still require report-format resync', () => {
     assert.ok(structuralGaps(readModeText(ROOT, `modes/${file}`)).length > 0,
       `${file}: remove from FROZEN_EVALUATION_MODES in tests/evaluation-mode-parity-helpers.mjs`);
   }
+});
+
+// A frozen file may still miss blocks, but not the posting URL: verify-pipeline,
+// merge-tracker --backfill-urls and the dashboard all match `**URL:**` exactly.
+test('every evaluation mode, frozen ones included, writes the exact **URL:** label', () => {
+  for (const file of ['oferta.md', ...discoverEvaluationModes(ROOT)]) {
+    assert.ok(!structuralGaps(readModeText(ROOT, `modes/${file}`)).includes('**URL:** in report header'), file);
+  }
+});
+
+// keyword-match.mjs reads every locale's keyword heading; a mode without the
+// block and its step never asks for the coverage check at all.
+test('canonical and re-synced locales embed ## Keyword Coverage and run keyword-match', () => {
+  const synced = discoverEvaluationModes(ROOT).filter(file => !FROZEN_EVALUATION_MODES.has(file));
+  for (const file of ['oferta.md', ...synced]) {
+    assert.deepEqual(keywordCoverageGaps(readModeText(ROOT, `modes/${file}`)), [], file);
+  }
+});
+
+test('keyword coverage: the template placeholder, prose and comments cannot stand in', () => {
+  const step = '\nRun `node keyword-match.mjs reports/{###}-{slug}-{date}.md`.\n';
+  const block = '## Keyword Coverage\n(from `node keyword-match.mjs <report>`)\n';
+  assert.deepEqual(keywordCoverageGaps(mode(REPORT + block) + step), []);
+  assert.deepEqual(keywordCoverageGaps(mode(REPORT + block)), ['keyword-match.mjs step']);
+  // The report template is output, so a command written only there is no step.
+  assert.deepEqual(keywordCoverageGaps(mode(REPORT + block + step)), ['keyword-match.mjs step']);
+  // The step may have its own fence, as modes/oferta.md's bash block does.
+  assert.deepEqual(keywordCoverageGaps(
+    `${mode(REPORT + block)}\n\`\`\`bash\nnode keyword-match.mjs reports/{###}-{slug}-{date}.md\n\`\`\`\n`), []);
+  assert.deepEqual(keywordCoverageGaps(mode(REPORT) + step), ['## Keyword Coverage']);
+  assert.deepEqual(keywordCoverageGaps(`${mode(REPORT)}\n${block}${step}`), ['## Keyword Coverage']);
+  assert.deepEqual(keywordCoverageGaps(mode(REPORT + block + block) + step), ['duplicate ## Keyword Coverage']);
+  assert.deepEqual(keywordCoverageGaps(mode(`${REPORT}<!-- ${block} -->\n`) + `<!-- ${step} -->`),
+    ['## Keyword Coverage', 'keyword-match.mjs step']);
 });
 
 test('a missing H answers section is reported', () => {

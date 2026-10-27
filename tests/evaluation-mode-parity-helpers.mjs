@@ -7,11 +7,9 @@ import { isNestedCheckout } from '../lib/mjs-files.mjs';
 // Shared inventory for the harness and regression suite. Remove a re-synced
 // locale from FROZEN_EVALUATION_MODES here; keep it in KNOWN_EVALUATION_MODES.
 export const FROZEN_EVALUATION_MODES = new Set([
-  // modes/<lang>/oferta.md (#3669)
-  'da/oferta.md', 'pl/oferta.md', 'pt/oferta.md', 'ua/oferta.md',
-  // market-named evaluation modes (#3828)
-  'de/angebot.md', 'fr/offre.md', 'hi/naukri.md', 'id/lowongan.md', 'it/annuncio.md',
-  'ko/gonggo.md', 'nl/vacature.md', 'tr/is-ilani.md',
+  // Empty: da, de, fr, hi, id, it, ko, nl and pl were re-synced as market
+  // layers over modes/oferta.md (#5843), pt and ua as full translations
+  // (#5433), and tr/is-ilani.md gained the English header labels (#3828).
 ]);
 
 // A known file that stops being discovered (renamed, or its A) block dropped)
@@ -120,14 +118,20 @@ function heading(line) {
     || (match[1].startsWith(name) && /^[ \t]/.test(match[1].slice(name.length)))) ?? null;
 }
 
+const isReportTemplate = lines => lines.some(line => heading(line) === 'A)');
+
+function reportTemplates(text) {
+  return fenceParts(withoutComments(text)).blocks
+    .map(body => fenceParts(body).visible)
+    .filter(isReportTemplate);
+}
+
 /** Missing or malformed parts of the single fenced report-format template.
  * @param {string} text Mode documentation, whose template H1 may be localized.
  * @returns {string[]} Empty only when the template satisfies the shared contract.
  */
 export function structuralGaps(text) {
-  const templates = fenceParts(withoutComments(text)).blocks
-    .map(body => fenceParts(body).visible)
-    .filter(lines => lines.some(line => heading(line) === 'A)'));
+  const templates = reportTemplates(text);
   if (templates.length !== 1) return [`expected one fenced report template, found ${templates.length}`];
   const lines = templates[0];
   const headings = lines.map(heading).filter(Boolean);
@@ -148,5 +152,26 @@ export function structuralGaps(text) {
       gaps.push(`**${label}:** in report header`);
     }
   }
+  return gaps;
+}
+
+/** Missing parts of the ATS keyword-coverage contract (modes/oferta.md step 1b).
+ * The heading stays English in every locale, and the step's command names a
+ * real report path, unlike the template's `<report>` placeholder. The step may
+ * sit in prose or in its own fence (modes/oferta.md uses a bash fence), but not
+ * in the report template, which is report output rather than an instruction.
+ * @param {string} text Mode documentation.
+ * @returns {string[]} Empty when the template and the step are both present.
+ */
+export function keywordCoverageGaps(text) {
+  const templates = reportTemplates(text);
+  if (templates.length !== 1) return [`expected one fenced report template, found ${templates.length}`];
+  const gaps = [];
+  const count = templates[0].filter(line => /^ {0,3}##[ \t]+Keyword Coverage[ \t]*$/.test(line)).length;
+  if (count === 0) gaps.push('## Keyword Coverage');
+  else if (count > 1) gaps.push('duplicate ## Keyword Coverage');
+  const { blocks, visible } = fenceParts(withoutComments(text));
+  const instructions = [...visible, ...blocks.filter(body => !isReportTemplate(fenceParts(body).visible))];
+  if (!instructions.join('\n').includes('keyword-match.mjs reports/')) gaps.push('keyword-match.mjs step');
   return gaps;
 }
