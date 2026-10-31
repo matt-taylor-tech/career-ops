@@ -45,9 +45,10 @@ function setup(file, { fail }) {
   });
   const load = { ok: true, reportNum: "007", company: "Acme", file, tree, doc, edits: emptyEdits("h1"), stale: false, hasBase: false };
   const previousRoot = process.env.CAREER_OPS_ROOT;
-  const previousCodeRoot = process.env.CAREER_OPS_CODE_ROOT;
   process.env.CAREER_OPS_ROOT = root;
-  // The stub renderer lives in the temp root, so it is the code checkout too.
+  // The stub scripts stand in for the code checkout, which is where the render
+  // looks for them; the temp dir is both roots here.
+  const previousCodeRoot = process.env.CAREER_OPS_CODE_ROOT;
   process.env.CAREER_OPS_CODE_ROOT = root;
   const out = (name) => path.join(root, "output", name);
   const cleanup = () => {

@@ -9,13 +9,14 @@ import { cliSubstitutionNotice, cliUnavailableError, resolveCliOrFallback } from
 import { localISODate } from "@/lib/followups";
 import { accumulateTokens, createAgentTextJoiner, isFatalGenericStderr, killMsForKind, timeoutMessage } from "@/lib/run-cli-support.mjs";
 import { spawnHeadlessCli } from "@/lib/spawn-cli.mjs";
-import { careerOpsRoot, codeRoot, separateCodeRoot, readMemory, findReportFile, readInbox, readScanDates, readLanguageConfig } from "@/lib/career-ops";
+import { careerOpsRoot, separateCodeRoot, readMemory, findReportFile, readInbox, readScanDates, readLanguageConfig } from "@/lib/career-ops";
+import { resolveCodeRoot } from "@/lib/core/code-root.mjs";
 import { resolvePdfPaths, type PdfPaths } from "@/lib/pdf-paths.mjs";
 import { renderAndMarkPdf, writeCvHtml, pdfRunOutcome } from "@/lib/pdf-render.mjs";
 import { createCvEnvelopeFilter, type CvEnvelope } from "@/lib/cv-envelope.mjs";
 import { createReportEnvelopeFilter } from "@/lib/report-envelope.mjs";
 import { persistEvaluation, evaluateRunOutcome } from "@/lib/report-persist.mjs";
-import { buildPrompt, isShellSafeCompanyName, layoutPreamble } from "@/lib/run-prompts.mjs";
+import { buildPrompt, isShellSafeCompanyName } from "@/lib/run-prompts.mjs";
 import { parseCoverRequest } from "@/lib/cover-brief.mjs";
 import { capabilitiesFor } from "@/lib/worker-capabilities.mjs";
 import { fencingReport, isCliAllowedForCapabilities } from "@/lib/cli-fencing.mjs";
@@ -25,15 +26,18 @@ import { profileRef } from "@/lib/core/profile-path.mjs";
 import { acquireTrackerWrite, releaseTrackerWrite } from "@/lib/core/run-registry";
 import { createRunFinalizer } from "@/lib/run-finalizer.mjs";
 import { readJsonObject } from "@/lib/json-body";
+import { parseEvaluationOptions, selectedEvaluationInstructions } from "@/lib/evaluation-options.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 800; // a real oferta evaluation / pdf-mode CV tailoring + render is heavy and multi-step
 
 export async function POST(req: Request) {
-  const body = await readJsonObject<{ kind?: string; input?: string; cliId?: string; brief?: unknown }>(req);
+  const body = await readJsonObject<{ kind?: string; input?: string; cliId?: string; brief?: unknown; evaluationSections?: unknown }>(req);
   if (!body) return new Response(JSON.stringify({ error: "bad json" }), { status: 400 });
   const { kind = "evaluate", input, cliId: requestedCliId, brief } = body;
+  const evaluation = kind === "evaluate" ? parseEvaluationOptions(body.evaluationSections) : undefined;
+  if (evaluation && !evaluation.ok) return Response.json({ error: evaluation.error }, { status: 400 });
   if (!input || !requestedCliId) {
     return new Response(JSON.stringify({ error: "input and cliId required" }), { status: 400 });
   }
@@ -64,20 +68,43 @@ export async function POST(req: Request) {
   const lang = readLanguageConfig();
   const needsScript: Record<string, string> = { evaluate: lang.evalModeFile, "fix-portal": "verify-portals.mjs", pdf: "generate-pdf.mjs", cover: "modes/cover.md" };
   const required = needsScript[kind];
+  // Scripts and system modes live in the code checkout, which on a split-layout
+  // install is not the data root (cv.md, reports/ and output stay under that).
+  const codeRoot = resolveCodeRoot(process.cwd(), process.env);
   // CAREER_OPS_ROOT is runtime user data, not a build input. Tracing this
   // dynamic path would copy the whole web project into every server bundle.
   // Mode files and scripts are engine code, so they are checked in the checkout —
   // under the Custom Data Directory layout the data root has none of them.
   const requiredPath = required
-    ? path.join(/* turbopackIgnore: true */ codeRoot(), required)
+    ? path.join(/* turbopackIgnore: true */ codeRoot, required)
     : "";
   if (required && !fs.existsSync(/* turbopackIgnore: true */ requiredPath)) {
     return new Response(
       JSON.stringify({
-        error: `This needs a complete career-ops checkout (${required} is missing from ${codeRoot()}). Set CAREER_OPS_CODE_ROOT to a full checkout.`,
+        error: `This needs a complete career-ops checkout (${required}). The career-ops code checkout is incomplete — point CAREER_OPS_CODE_ROOT at a full checkout.`,
       }),
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
+  }
+
+  // Assemble selected canonical instructions before any extraction or model call.
+  // Omitted work never becomes part of the worker's evaluation instructions.
+  let evaluationInstructions: string | null = null;
+  if (evaluation?.ok && !evaluation.full) {
+    try {
+      // modes/ and batch/ are system files: they live in the code checkout.
+      const root = codeRoot;
+      evaluationInstructions = selectedEvaluationInstructions({
+        mode: fs.readFileSync(/* turbopackIgnore: true */ requiredPath, "utf8"),
+        canonicalMode: fs.readFileSync(/* turbopackIgnore: true */ path.join(root, "modes/oferta.md"), "utf8"),
+        shared: fs.readFileSync(/* turbopackIgnore: true */ path.join(root, "modes/_shared.md"), "utf8"),
+        batch: fs.readFileSync(/* turbopackIgnore: true */ path.join(root, "batch/batch-prompt.md"), "utf8"),
+        sections: evaluation.sections,
+      });
+    } catch (error) {
+      console.error("[career-ops] Failed to load focused evaluation instructions:", error);
+      return Response.json({ error: "Could not load the selected evaluation instructions. No AI run was started." }, { status: 422 });
+    }
   }
 
   // fix-portal's prompt puts this straight into a shell command the agent runs, and
@@ -141,27 +168,27 @@ export async function POST(req: Request) {
   // is: the worker has no Bash (#2172), so it cannot run cv-templates.mjs and the
   // prompt used to name the base template outright, silently ignoring cv.template
   // (#4034). Only pdf fills a template, so nothing else pays for the lookup.
-  // The roots are passed, not re-derived: a relative CAREER_OPS_PROFILE resolves
-  // against the data root, and `process.cwd()` here is `<core>/web` (see cv-template.mjs).
-  const cvTemplate = kind === "pdf" ? await resolveCvTemplate(careerOpsRoot(), codeRoot()) : undefined;
+  // The root is passed, not re-derived: a relative CAREER_OPS_PROFILE resolves
+  // against it, and `process.cwd()` here is `<core>/web` (see cv-template.mjs).
+  const cvTemplate = kind === "pdf" ? await resolveCvTemplate(codeRoot) : undefined;
   // The worker's cwd is the data root. When the checkout is elsewhere (Custom
-  // Data Directory layout) the prompt is prefixed with where modes/templates/
-  // scripts live and Claude is granted that directory; same root → neither.
+  // Data Directory layout) Claude is granted that directory too.
   const extraCodeDir = separateCodeRoot();
-  const prompt =
-    layoutPreamble({ dataRoot: careerOpsRoot(), codeRoot: codeRoot() }) +
-    buildPrompt({
-      kind,
-      input,
-      memory: readMemory(),
-      today,
-      postedAt,
-      lang,
-      cvTemplate,
-      reportFile: pdfPaths?.reportFile ?? (coverRequest?.ok ? coverRequest.reportFile : undefined),
-      coverBrief: coverRequest?.ok ? coverRequest.brief : undefined,
-      profile: profileRef(careerOpsRoot()),
-    });
+  const prompt = buildPrompt({
+    kind,
+    input,
+    memory: readMemory(),
+    today,
+    postedAt,
+    lang,
+    cvTemplate,
+    // The worker's cwd is the data root; modes, templates and scripts live in the checkout.
+    codeRoot,
+    reportFile: pdfPaths?.reportFile ?? (coverRequest?.ok ? coverRequest.reportFile : undefined),
+    coverBrief: coverRequest?.ok ? coverRequest.brief : undefined,
+    profile: profileRef(careerOpsRoot()),
+    evaluationInstructions,
+  });
 
   const isClaude = cliId === "claude";
   // Which tools each kind gets, and the whole claude argv, live in
@@ -444,11 +471,12 @@ export async function POST(req: Request) {
             spawnFn: spawn,
             execPath: process.execPath,
             root: careerOpsRoot(),
-            codeRoot: codeRoot(),
+            coreRoot: resolveCodeRoot(process.cwd(), process.env),
             markdown,
             url: input,
             today,
             postedAt,
+            evaluationSections: evaluation?.ok ? evaluation.sections : undefined,
           });
           if (!result.ok) {
             send({ type: "error", msg: result.error.slice(0, 200) });
@@ -478,8 +506,7 @@ export async function POST(req: Request) {
           const result = await renderAndMarkPdf({
             spawnFn: spawn,
             execPath: process.execPath,
-            root: careerOpsRoot(),
-            codeRoot: codeRoot(),
+            coreRoot: resolveCodeRoot(process.cwd(), process.env),
             pdfPaths: paths,
             format,
             reportNum: paths.reportNum,

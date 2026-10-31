@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
-import { careerOpsRoot, rootScript } from "@/lib/career-ops";
+import { careerOpsRoot } from "@/lib/career-ops";
+import { resolveCodeRoot } from "@/lib/core/code-root.mjs";
 import { setInboxSkip } from "@/lib/inbox-skip.mjs";
 import { readJsonObject } from "@/lib/json-body";
 
@@ -38,9 +39,7 @@ export async function POST(req: Request) {
 
   const root = careerOpsRoot();
   const file = path.join(root, "data", "pipeline.md");
-  // The lock module is engine code: under the Custom Data Directory layout it
-  // lives in the checkout, never beside data/pipeline.md.
-  const lockModule = rootScript("pipeline-lock");
+  const lockModule = path.join(resolveCodeRoot(process.cwd(), process.env), "pipeline-lock.mjs");
   if (!fs.existsSync(lockModule)) {
     return NextResponse.json(
       { error: "inbox skip needs the career-ops scripts; the code checkout has no pipeline-lock.mjs", code: "core-script-missing" },

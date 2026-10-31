@@ -15,8 +15,6 @@ const REPORT = `# 評価: {Company} — {Role}
 **Legitimacy:** {tier}
 **PDF:** {pdf}
 
-## Machine Summary
-{machine fields}
 ## A) Role Summary
 {role}
 ## B) Match
@@ -35,6 +33,8 @@ const REPORT = `# 評価: {Company} — {Role}
 {risks}
 ## H) Answers
 {answers}
+## Machine Summary
+{machine fields}
 `;
 const mode = (body = REPORT, fence = '```') => `# Mode instructions\n\n${fence}markdown\n${body}${fence}\n`;
 
@@ -78,20 +78,45 @@ test('canonical and re-synced locales embed ## Keyword Coverage and run keyword-
 });
 
 test('keyword coverage: the template placeholder, prose and comments cannot stand in', () => {
-  const step = '\nRun `node keyword-match.mjs reports/{###}-{slug}-{date}.md`.\n';
-  const block = '## Keyword Coverage\n(from `node keyword-match.mjs <report>`)\n';
+  const step = '\n```bash\nnode --input-type=module -e \'const args = ["keyword-match.mjs", p.report];\' {json-file}\n```\n';
+  const block = '## Keyword Coverage\n(from `keyword-match.mjs` (1b))\n';
   assert.deepEqual(keywordCoverageGaps(mode(REPORT + block) + step), []);
   assert.deepEqual(keywordCoverageGaps(mode(REPORT + block)), ['keyword-match.mjs step']);
   // The report template is output, so a command written only there is no step.
-  assert.deepEqual(keywordCoverageGaps(mode(REPORT + block + step)), ['keyword-match.mjs step']);
-  // The step may have its own fence, as modes/oferta.md's bash block does.
+  assert.deepEqual(keywordCoverageGaps(mode(REPORT + block + step.replace(/```(bash)?/g, ''))), ['keyword-match.mjs step']);
+  // The command's text quoted in prose is not a runnable step.
   assert.deepEqual(keywordCoverageGaps(
-    `${mode(REPORT + block)}\n\`\`\`bash\nnode keyword-match.mjs reports/{###}-{slug}-{date}.md\n\`\`\`\n`), []);
+    `${mode(REPORT + block)}\nThe command builds \`["keyword-match.mjs", p.report]\`.\n`), ['keyword-match.mjs step']);
+  // The old form, a report path typed into the command line, is not the step (#5853).
+  assert.deepEqual(keywordCoverageGaps(
+    `${mode(REPORT + block)}\nRun \`node keyword-match.mjs reports/{###}-{slug}-{date}.md\`.\n`), ['keyword-match.mjs step']);
   assert.deepEqual(keywordCoverageGaps(mode(REPORT) + step), ['## Keyword Coverage']);
   assert.deepEqual(keywordCoverageGaps(`${mode(REPORT)}\n${block}${step}`), ['## Keyword Coverage']);
   assert.deepEqual(keywordCoverageGaps(mode(REPORT + block + block) + step), ['duplicate ## Keyword Coverage']);
   assert.deepEqual(keywordCoverageGaps(mode(`${REPORT}<!-- ${block} -->\n`) + `<!-- ${step} -->`),
     ['## Keyword Coverage', 'keyword-match.mjs step']);
+});
+
+test('a Machine Summary ahead of any other report section is reported', () => {
+  const machine = '## Machine Summary\n{machine fields}\n';
+  const atTop = REPORT.replace(machine, '').replace('## A) Role Summary', `${machine}## A) Role Summary`);
+  assert.ok(structuralGaps(mode(atTop)).includes('## Machine Summary is not the last report section'));
+  const beforeKeywords = `${REPORT}## Keyword Coverage\n{coverage}\n`;
+  assert.ok(structuralGaps(mode(beforeKeywords)).includes('## Machine Summary is not the last report section'));
+  // A locale without one is not asked to add it here.
+  assert.deepEqual(structuralGaps(mode(REPORT.replace(machine, ''))), []);
+});
+
+// The batch worker writes its report from batch/batch-prompt.md, not a mode file.
+test('batch/batch-prompt.md writes the Machine Summary as the last report section', () => {
+  const prompt = readModeText(ROOT, 'batch/batch-prompt.md');
+  const step3 = prompt.slice(prompt.indexOf('### Step 3'), prompt.indexOf('### Step 4'));
+  const template = step3.slice(step3.indexOf('Report header:'), step3.indexOf('`**Decision:**` is Machine Summary'));
+  const sections = template.split('\n').filter(line => /^##[ \t]+/.test(line));
+  assert.equal(sections.at(-1), '## Machine Summary', `template sections: ${sections.join(' | ')}`);
+  const list = step3.slice(step3.indexOf("The report's sections, in this order:"));
+  const items = list.split('\n\n')[1].split('\n').filter(line => line.startsWith('- `## '));
+  assert.ok(items.at(-1).startsWith('- `## Machine Summary`'), `last listed section: ${items.at(-1)}`);
 });
 
 test('a missing H answers section is reported', () => {

@@ -18,7 +18,7 @@ import { BASE_CV_TEMPLATE } from "../run-prompts.mjs";
  * Reimplementing the lookup in the web app would be a second source of truth that
  * drifts.
  *
- * `root` is an ARGUMENT, not a value this module reaches for, for the reason
+ * `coreRoot` is an ARGUMENT, not a value this module reaches for, for the reason
  * data-root.mjs spells out at length: `process.cwd()` is `<core>/web` here and
  * `<core>` on the CLI, so anything resolved against the cwd points one directory
  * too deep on exactly one of the two. Passing the root in also makes this testable
@@ -29,7 +29,7 @@ import { BASE_CV_TEMPLATE } from "../run-prompts.mjs";
  * RELATIVE value against the cwd, so `CAREER_OPS_PROFILE=config/profile.yml` means
  * `<core>/config/profile.yml` to the CLI and `<core>/web/config/profile.yml` here
  * — the dashboard finds no profile, falls back to the base template, and the two
- * disagree with nothing reporting it. Resolving it against `root` first is the same
+ * disagree with nothing reporting it. Resolving it against `coreRoot` first is the same
  * fix, and the same reasoning, as resolveDataRoot()'s `resolve(coreRoot, fromEnv)`.
  * An absolute override is returned unchanged by path.resolve, so it is unaffected.
  *
@@ -38,19 +38,11 @@ import { BASE_CV_TEMPLATE } from "../run-prompts.mjs";
  * not exist; the catch is for a checkout too old to export resolveTemplate, and
  * for a template whose placeholders fail validation.
  *
- * `codeRoot` is the engine checkout holding cv-templates.mjs and templates/.
- * It equals `root` in the default single-checkout layout and is a different
- * directory under the Custom Data Directory layout (DATA_CONTRACT.md), where
- * `root` holds user data only and has no scripts or templates at all. The
- * returned path is relative to `codeRoot`, since that is where templates live,
- * and a relative CAREER_OPS_PROFILE resolves against it too (the CLI's cwd).
- *
- * @param {string} root Absolute path to the career-ops data root (careerOpsRoot()).
- * @param {string} [codeRoot] Absolute path to the engine checkout; defaults to `root`.
- * @returns {Promise<string>} Checkout-relative template path, forward-slashed.
+ * @param {string} coreRoot Absolute path to the career-ops code checkout (resolveCodeRoot()), not the data root.
+ * @returns {Promise<string>} Repo-relative template path, forward-slashed.
  */
-export async function resolveCvTemplate(root, codeRoot = root) {
-  const file = path.join(codeRoot, "cv-templates.mjs");
+export async function resolveCvTemplate(coreRoot) {
+  const file = path.join(coreRoot, "cv-templates.mjs");
   try {
     const mod = await import(/* webpackIgnore: true */ pathToFileURL(file).href);
     if (typeof mod?.resolveTemplate !== "function") return BASE_CV_TEMPLATE;
@@ -59,15 +51,13 @@ export async function resolveCvTemplate(root, codeRoot = root) {
       fallback: true,
       // undefined keeps cv-templates.mjs's own default, rather than restating it
       // here where it would drift.
-      // A relative value means what it means on the CLI, whose cwd is the
-      // checkout — the same base path-resolver.mjs uses for CAREER_OPS_ROOT.
-      profilePath: profile ? path.resolve(codeRoot, profile) : undefined,
+      profilePath: profile ? path.resolve(coreRoot, profile) : undefined,
     });
     if (typeof abs !== "string" || !abs) return BASE_CV_TEMPLATE;
     // The prompt names a repo-relative path, and always with forward slashes:
     // path.relative gives backslashes on Windows, which is not how any of the
     // agent-facing paths in this prompt are written.
-    const rel = path.relative(codeRoot, abs).split(path.sep).join("/");
+    const rel = path.relative(coreRoot, abs).split(path.sep).join("/");
     return rel || BASE_CV_TEMPLATE;
   } catch {
     return BASE_CV_TEMPLATE;

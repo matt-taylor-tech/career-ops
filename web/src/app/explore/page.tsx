@@ -3,6 +3,7 @@ import { ExplorerView } from "@/components/explore/explorer-view";
 import { seedExploreFilters } from "@/lib/core/portals";
 import { readInbox, readApplications, careerOpsRoot } from "@/lib/career-ops";
 import { readDismissed } from "@/lib/dismissed.mjs";
+import { exploreSnapshot } from "@/lib/explore-snapshot.mjs";
 import { DEFAULT_FILTERS } from "@/lib/explore";
 
 // Read live data at request time so a bare checkout (or `next build` with no
@@ -22,7 +23,13 @@ export default function ExplorePage() {
   } catch {
     /* ignore */
   }
+  const applications = readApplications();
+  const inbox = readInbox(applications);
+  const snap = exploreSnapshot(inbox, applications);
+  // Postings skipped in the inbox (`- [x]` in pipeline.md) or hidden from Today /
+  // Explore are a "not interested" decision: keep them out of Explore results.
+  const skippedUrls = [...inbox.filter((j) => j.done).map((j) => j.url), ...readDismissed(careerOpsRoot())];
   return (
-    <ExplorerView seed={seed} inboxSnapshot={readInbox()} appsSnapshot={readApplications()} dismissed={[...readDismissed(careerOpsRoot())]} rootExists={rootExists} />
+    <ExplorerView seed={seed} inboxUrls={snap.inboxUrls} evaluated={snap.evaluated} skippedUrls={skippedUrls} rootExists={rootExists} />
   );
 }

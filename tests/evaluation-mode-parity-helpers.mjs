@@ -144,7 +144,12 @@ export function structuralGaps(text) {
   if (gaps.length === 0 && headings.join('|') !== REQUIRED_HEADINGS.join('|')) {
     gaps.push('report section order A)–G) → Risk Summary → H)');
   }
-  // Machine Summary can precede A), so stop at the first H2, not just at A).
+  // Scripts find the Machine Summary by its heading, so it goes last (#6156)
+  // instead of standing between the reader and A). Not every locale has one.
+  const sections = lines.filter(line => /^ {0,3}##[ \t]+/.test(line));
+  const machine = sections.findIndex(line => /^ {0,3}##[ \t]+Machine Summary[ \t]*$/.test(line));
+  if (machine >= 0 && machine !== sections.length - 1) gaps.push('## Machine Summary is not the last report section');
+  // The header ends at the first H2, whatever it is, not just at A).
   const firstSection = lines.findIndex(line => /^ {0,3}##[ \t]+/.test(line));
   const header = lines.slice(0, firstSection);
   for (const label of REQUIRED_LABELS) {
@@ -156,10 +161,11 @@ export function structuralGaps(text) {
 }
 
 /** Missing parts of the ATS keyword-coverage contract (modes/oferta.md step 1b).
- * The heading stays English in every locale, and the step's command names a
- * real report path, unlike the template's `<report>` placeholder. The step may
- * sit in prose or in its own fence (modes/oferta.md uses a bash fence), but not
- * in the report template, which is report output rather than an instruction.
+ * The heading stays English in every locale, and the step is the JSON-file
+ * command that starts keyword-match.mjs with the report path as its own
+ * argument (#5853); tests/mode-command-arguments.test.mjs pins its exact text.
+ * It must be a fenced block outside the report template, which is report
+ * output rather than an instruction.
  * @param {string} text Mode documentation.
  * @returns {string[]} Empty when the template and the step are both present.
  */
@@ -170,8 +176,9 @@ export function keywordCoverageGaps(text) {
   const count = templates[0].filter(line => /^ {0,3}##[ \t]+Keyword Coverage[ \t]*$/.test(line)).length;
   if (count === 0) gaps.push('## Keyword Coverage');
   else if (count > 1) gaps.push('duplicate ## Keyword Coverage');
-  const { blocks, visible } = fenceParts(withoutComments(text));
-  const instructions = [...visible, ...blocks.filter(body => !isReportTemplate(fenceParts(body).visible))];
-  if (!instructions.join('\n').includes('keyword-match.mjs reports/')) gaps.push('keyword-match.mjs step');
+  // Only a fenced command counts: the same text quoted in prose is not something to run.
+  const { blocks } = fenceParts(withoutComments(text));
+  const commands = blocks.filter(body => !isReportTemplate(fenceParts(body).visible));
+  if (!commands.some(body => body.includes('"keyword-match.mjs", p.report'))) gaps.push('keyword-match.mjs step');
   return gaps;
 }
