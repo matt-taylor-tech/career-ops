@@ -2,7 +2,7 @@
 // through spawnHeadlessCli (which closes stdin so `codex exec` can't hang waiting
 // on it, #2085), while the PDF render is a plain Node child process with no CLI
 // sandbox in the way (#2172) and so passes `spawn` itself to renderAndMarkPdf.
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { cliSubstitutionNotice, cliUnavailableError, resolveCliOrFallback } from "@/lib/clis";
@@ -17,6 +17,7 @@ import { createCvEnvelopeFilter, type CvEnvelope } from "@/lib/cv-envelope.mjs";
 import { createReportEnvelopeFilter } from "@/lib/report-envelope.mjs";
 import { persistEvaluation, evaluateRunOutcome } from "@/lib/report-persist.mjs";
 import { buildPrompt, isShellSafeCompanyName } from "@/lib/run-prompts.mjs";
+import { fetchPostingText } from "@/lib/fetch-posting.mjs";
 import { parseCoverRequest } from "@/lib/cover-brief.mjs";
 import { capabilitiesFor } from "@/lib/worker-capabilities.mjs";
 import { fencingReport, isCliAllowedForCapabilities } from "@/lib/cli-fencing.mjs";
@@ -174,6 +175,12 @@ export async function POST(req: Request) {
   // The worker's cwd is the data root. When the checkout is elsewhere (Custom
   // Data Directory layout) Claude is granted that directory too.
   const extraCodeDir = separateCodeRoot();
+  // The worker cannot run fetch-jd.mjs (no Bash) and WebFetch sees only a shell
+  // on client-rendered ATS pages, so the JD is fetched here when the ATS allows.
+  const postingText =
+    kind === "evaluate"
+      ? await fetchPostingText({ execFileFn: execFile, execPath: process.execPath, coreRoot: codeRoot, cwd: careerOpsRoot(), url: input })
+      : null;
   const prompt = buildPrompt({
     kind,
     input,
@@ -188,6 +195,7 @@ export async function POST(req: Request) {
     coverBrief: coverRequest?.ok ? coverRequest.brief : undefined,
     profile: profileRef(careerOpsRoot()),
     evaluationInstructions,
+    postingText,
   });
 
   const isClaude = cliId === "claude";
