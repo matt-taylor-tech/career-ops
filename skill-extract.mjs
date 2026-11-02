@@ -150,7 +150,7 @@ export const SKILL_TOKENS = [
   //
   // Longest-first within each family, matching the 'React Native'-before-'React'
   // and 'Lean Six Sigma'-before-'Six Sigma' convention above.
-  'Account-Based Marketing', 'Account Based Marketing', 'ABM',
+  'Account-Based Marketing', 'Account Based Marketing', 'Apple Business Manager', 'ABM',
   'Demand-Side Platform', 'Demand Side Platform', 'DSPs', 'DSP',
   // Only the MEDIA senses of "programmatic" — see the omission note below.
   'Programmatic Advertising', 'Programmatic Display', 'Programmatic Media',
@@ -338,6 +338,10 @@ export const CANONICAL = {
   // set is built from the CV's spelling and the gap map from the report's, and
   // the two only cancel if both collapse to one display form.
   'account-based marketing': 'ABM', 'account based marketing': 'ABM',
+  // Fork (2026-11-02): in IT reports "ABM" is Apple Business Manager. Folding
+  // the long form onto the same display name lets a CV that spells it out
+  // cancel the bare "ABM" a report writes, instead of logging a false gap.
+  'apple business manager': 'ABM',
   'demand-side platform': 'DSP', 'demand side platform': 'DSP', 'dsps': 'DSP',
   // Every media sense of "programmatic" lands on one display name, so the gap
   // map does not split one competency across four rows.
