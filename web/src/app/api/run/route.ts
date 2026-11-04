@@ -22,7 +22,7 @@ import { parseCoverRequest } from "@/lib/cover-brief.mjs";
 import { capabilitiesFor } from "@/lib/worker-capabilities.mjs";
 import { fencingReport, isCliAllowedForCapabilities } from "@/lib/cli-fencing.mjs";
 import { claudeCliArgs } from "@/lib/claude-invocation.mjs";
-import { resolveCvTemplate } from "@/lib/core/cv-template.mjs";
+import { resolveCvTemplate, resolveUserTemplatesDir } from "@/lib/core/cv-template.mjs";
 import { profileRef } from "@/lib/core/profile-path.mjs";
 import { acquireTrackerWrite, releaseTrackerWrite } from "@/lib/core/run-registry";
 import { createRunFinalizer } from "@/lib/run-finalizer.mjs";
@@ -171,7 +171,18 @@ export async function POST(req: Request) {
   // (#4034). Only pdf fills a template, so nothing else pays for the lookup.
   // The root is passed, not re-derived: a relative CAREER_OPS_PROFILE resolves
   // against it, and `process.cwd()` here is `<core>/web` (see cv-template.mjs).
-  const cvTemplate = kind === "pdf" ? await resolveCvTemplate(codeRoot) : undefined;
+  // The data root goes in too: a template from the core's user layer (#5777) lives
+  // there, so it is named relative to the worker's cwd, not the checkout.
+  const dataRoot = kind === "pdf" ? careerOpsRoot() : undefined;
+
+  const cvTemplate = dataRoot
+    ? await resolveCvTemplate(codeRoot, dataRoot)
+    : undefined;
+
+  const userTemplatesDir = dataRoot
+    ? await resolveUserTemplatesDir(codeRoot, dataRoot)
+    : undefined;
+
   // The worker's cwd is the data root. When the checkout is elsewhere (Custom
   // Data Directory layout) Claude is granted that directory too.
   const extraCodeDir = separateCodeRoot();
@@ -189,6 +200,7 @@ export async function POST(req: Request) {
     postedAt,
     lang,
     cvTemplate,
+    userTemplatesDir,
     // The worker's cwd is the data root; modes, templates and scripts live in the checkout.
     codeRoot,
     reportFile: pdfPaths?.reportFile ?? (coverRequest?.ok ? coverRequest.reportFile : undefined),
