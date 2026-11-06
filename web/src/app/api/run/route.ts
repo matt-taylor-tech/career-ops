@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { cliSubstitutionNotice, cliUnavailableError, resolveCliOrFallback } from "@/lib/clis";
 import { localISODate } from "@/lib/followups";
-import { accumulateTokens, createAgentTextJoiner, isFatalGenericStderr, killMsForKind, timeoutMessage } from "@/lib/run-cli-support.mjs";
+import { accumulateTokens, createAgentTextJoiner, isFatalGenericStderr, killMsForKind, noOutputError, timeoutMessage } from "@/lib/run-cli-support.mjs";
 import { spawnHeadlessCli } from "@/lib/spawn-cli.mjs";
 import { careerOpsRoot, separateCodeRoot, readMemory, findReportFile, readInbox, readScanDates, readLanguageConfig } from "@/lib/career-ops";
 import { resolveCodeRoot } from "@/lib/core/code-root.mjs";
@@ -15,7 +15,7 @@ import { resolvePdfPaths, type PdfPaths } from "@/lib/pdf-paths.mjs";
 import { renderAndMarkPdf, writeCvHtml, pdfRunOutcome } from "@/lib/pdf-render.mjs";
 import { createCvEnvelopeFilter, type CvEnvelope } from "@/lib/cv-envelope.mjs";
 import { createReportEnvelopeFilter } from "@/lib/report-envelope.mjs";
-import { persistEvaluation, evaluateRunOutcome } from "@/lib/report-persist.mjs";
+import { persistEvaluation, evaluateRunOutcome, evaluationOutcomeEvent } from "@/lib/report-persist.mjs";
 import { buildPrompt, isShellSafeCompanyName } from "@/lib/run-prompts.mjs";
 import { fetchPostingText } from "@/lib/fetch-posting.mjs";
 import { parseCoverRequest } from "@/lib/cover-brief.mjs";
@@ -391,6 +391,10 @@ export async function POST(req: Request) {
       // for the backend while holding the body out of the run log.
       const cvFilter = kind === "pdf" ? createCvEnvelopeFilter() : null;
       const reportFilter = kind === "evaluate" ? createReportEnvelopeFilter() : null;
+      // Assistant-authored text only, before report-body filtering. Tools/JDs
+      // cannot directly declare a gated outcome. Process integrity is checked
+      // first at close, before this text can be treated as a terminal stop.
+      let evaluationText = "";
       // While the agent emits the 15-25 KB <<cv-html>> envelope, cvFilter swallows
       // every byte, so the response stream goes completely silent for as long as
       // the model takes to write the CV — a minute or more. Nothing downstream can
@@ -400,6 +404,7 @@ export async function POST(req: Request) {
       // the stream never idles during the filtered phase. Unknown event types are
       // ignored by the client's switch, so this is safe for older tabs too.
       const sendAgentText = (text: string) => {
+        if (kind === "evaluate") evaluationText += text;
         const filter = cvFilter ?? reportFilter;
         const visible = filter ? filter.push(text) : text;
         if (visible) send({ type: "text", text: visible });
@@ -581,14 +586,8 @@ export async function POST(req: Request) {
         // pdfRunOutcome's noOutputMessage — because a CLI that produced no output at
         // all is the same failure mode whether it was evaluating or tailoring
         // a PDF — one place for the condition/message pair instead of two.
-        const noOutputError = (): string | null => {
-          if (!emittedText && !sawError && !cleanExit) {
-            const detail = stderrErrorSnippet ? ` (${stderrErrorSnippet})` : "";
-            return `The CLI exited with an error — is it installed and authenticated?${detail}`;
-          }
-          if (!emittedText && !sawError) return "The CLI produced no output — is it installed and authenticated? (career-ops is best on Claude Code.)";
-          return null;
-        };
+        const noOutputMessage = (): string | null =>
+          noOutputError({ emittedText, sawError, cleanExit, stderrSnippet: stderrErrorSnippet });
 
         if (kind === "pdf") {
           // Release any text the filter was still holding, so the log keeps the
@@ -601,7 +600,7 @@ export async function POST(req: Request) {
           const envelope = cvFilter?.result();
           const outcome = pdfRunOutcome({
             envelope,
-            noOutputMessage: noOutputError(),
+            noOutputMessage: noOutputMessage(),
             sawError,
             cleanExit,
             hasPaths: pdfPaths !== undefined,
@@ -633,12 +632,14 @@ export async function POST(req: Request) {
           const envelope = reportFilter?.result();
           const outcome = evaluateRunOutcome({
             envelope,
-            noOutputMessage: noOutputError(),
+            noOutputMessage: noOutputMessage(),
             sawError,
             cleanExit,
+            text: evaluationText,
           });
           if (!outcome.ok) {
-            send({ type: "error", msg: outcome.message });
+            const event = evaluationOutcomeEvent(outcome, { tokens: lastTokens, costUsd: lastCostUsd });
+            if (event) send(event);
           } else if (envelope?.ok !== true) {
             send({ type: "error", msg: "Internal error: the evaluate run passed its gate with no report to save — please report this." });
           } else {
@@ -651,7 +652,7 @@ export async function POST(req: Request) {
         // Honesty gate (#9): a green "done" with a parsed score requires a CLEAN exit
         // and real output. Anything else is surfaced. An errored run must never be
         // banked as a confident score.
-        const baseErr = noOutputError();
+        const baseErr = noOutputMessage();
         if (baseErr) {
           send({ type: "error", msg: baseErr });
         } else if (!cleanExit || sawError) {
