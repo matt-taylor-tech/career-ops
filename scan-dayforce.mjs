@@ -73,7 +73,8 @@ import {
   BROWSER_PROCESS_ENV,
   DATA_ROOT as SCAN_DATA_ROOT,
   loadSeenUrls,
-  normalizeUrlForDedup,
+  scanHistoryPolicy,
+  seenJobKey,
   buildTitleFilter,
   buildLocationFilter,
   buildContentFilterOrExit,
@@ -399,7 +400,8 @@ export function loadConfig(portalsPath = PORTALS_PATH, singleTenant = null) {
     matchedTitleKeywords: (title) => matchedTitleKeywords(title, config.title_filter),
   };
 
-  return { boards, invalidCount, filters };
+  // The recheck window scan.mjs applies to the same seen set.
+  return { boards, invalidCount, filters, historyPolicy: scanHistoryPolicy(config) };
 }
 
 // ── Fetch helpers (all run through page.request — same context, same cookies) ──
@@ -655,7 +657,7 @@ export async function scanBoardWithRetry(boardCfg, filters, {
 async function main() {
   const { dryRun, debug, singleTenant } = parseArgs();
   mkdirSync(join(DATA_ROOT, 'data'), { recursive: true });
-  const { boards, invalidCount, filters } = loadConfig(PORTALS_PATH, singleTenant);
+  const { boards, invalidCount, filters, historyPolicy } = loadConfig(PORTALS_PATH, singleTenant);
 
   if (invalidCount > 0) {
     console.log(`  Skipping ${invalidCount} malformed dayforce_boards entr${invalidCount === 1 ? 'y' : 'ies'} (bad tenant/board/culture/jobBoardId)`);
@@ -666,7 +668,7 @@ async function main() {
     return;
   }
 
-  const { seen } = loadSeenUrls();
+  const { seen } = loadSeenUrls(historyPolicy);
   const date = localToday();
 
   let totalFound = 0;
@@ -693,14 +695,14 @@ async function main() {
     totalFound += result.totalFound;
     process.stdout.write(`${result.totalFound} found, ${result.found.length} passed filters\n`);
 
-    for (const skip of result.titleSkipped) { seen.add(normalizeUrlForDedup(skip.url)); titleSkipped.push({ ...skip, source: 'dayforce', company: boardCfg.name }); }
-    for (const skip of result.locationSkipped) { seen.add(normalizeUrlForDedup(skip.url)); locationSkipped.push({ ...skip, source: 'dayforce', company: boardCfg.name }); }
-    for (const skip of result.contentSkipped) { seen.add(normalizeUrlForDedup(skip.url)); contentSkipped.push({ ...skip, source: 'dayforce', company: boardCfg.name }); }
-    for (const skip of result.countryEligibilitySkipped) { seen.add(normalizeUrlForDedup(skip.url)); countryEligibilitySkipped.push({ ...skip, source: 'dayforce', company: boardCfg.name }); }
-    for (const skip of result.visaSkipped) { seen.add(normalizeUrlForDedup(skip.url)); visaSkipped.push({ ...skip, source: 'dayforce', company: boardCfg.name }); }
+    for (const skip of result.titleSkipped) { seen.add(seenJobKey(skip.url)); titleSkipped.push({ ...skip, source: 'dayforce', company: boardCfg.name }); }
+    for (const skip of result.locationSkipped) { seen.add(seenJobKey(skip.url)); locationSkipped.push({ ...skip, source: 'dayforce', company: boardCfg.name }); }
+    for (const skip of result.contentSkipped) { seen.add(seenJobKey(skip.url)); contentSkipped.push({ ...skip, source: 'dayforce', company: boardCfg.name }); }
+    for (const skip of result.countryEligibilitySkipped) { seen.add(seenJobKey(skip.url)); countryEligibilitySkipped.push({ ...skip, source: 'dayforce', company: boardCfg.name }); }
+    for (const skip of result.visaSkipped) { seen.add(seenJobKey(skip.url)); visaSkipped.push({ ...skip, source: 'dayforce', company: boardCfg.name }); }
 
     for (const offer of result.found) {
-      const key = normalizeUrlForDedup(offer.url);
+      const key = seenJobKey(offer.url);
       if (seen.has(key)) { dupeSkipped.push(offer); continue; }
       seen.add(key);
       newOffers.push(offer);

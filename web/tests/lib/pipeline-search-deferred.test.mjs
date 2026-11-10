@@ -33,3 +33,15 @@ test("the row filter reads the deferred search value, not the keystroke value", 
   // The fork narrows rows by work location before tabs (locatedApplications).
   assert.match(src, /\[locatedApplications, tab\]/);
 });
+
+test("opening a row reads the current search without passing it into every row", () => {
+  assert.match(src, /const detailQuery = pipelineQuery\(params\.toString\(\), deferredQ\)/);
+  const followDetailStart = src.indexOf("const followDetail = useCallback(");
+  const followDetailEnd = src.indexOf("const stampDetail", followDetailStart);
+  assert.ok(followDetailEnd > followDetailStart, "followDetail must end before stampDetail");
+  const followDetail = src.slice(followDetailStart, followDetailEnd);
+  assert.match(followDetail, /trackerDetailHref\(n, paramsRef\.current, qRef\.current\)/);
+  assert.match(followDetail, /syncSearchRef\.current\(event\)/);
+  assert.doesNotMatch(followDetail, /pipelineQuery\(params\.toString\(\), q\)/);
+  assert.match(followDetail, /\[\]\);/);
+});

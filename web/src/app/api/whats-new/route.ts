@@ -5,6 +5,8 @@ import { evaluatedKeys, isEvaluated, skippedInboxUrls } from "@/lib/whats-new-su
 import type { DiscoveredOffer } from "@/lib/explore";
 import { collectWhatsNew, resolveOfferLimit } from "@/lib/whats-new.mjs";
 import { readDismissed } from "@/lib/dismissed.mjs";
+import { rankOffers } from "@/lib/core/inbox-rank.mjs";
+import { loadFitTargets } from "@/lib/inbox-fit-profile.mjs";
 import { loadWorkplacePolicy } from "@/lib/core/workplace-policy.mjs";
 
 export const runtime = "nodejs";
@@ -79,7 +81,12 @@ export async function GET(req: Request) {
   // is "URL unknown", any other read failure throws from readLinkedReport. The
   // reads are lazy, inside toOffer, so they surface here.
   try {
-    const { offers, count } = collectWhatsNew(rows, { cutoff, toOffer, offerLimit });
+    const { offers: pool, count } = collectWhatsNew(rows, {
+      cutoff,
+      toOffer,
+      offerLimit: Number.POSITIVE_INFINITY,
+    });
+    const offers = rankOffers(pool, loadFitTargets(), offerLimit);
     return Response.json({ offers, count });
   } catch (err) {
     return Response.json(

@@ -11,6 +11,8 @@ type DocumentItem = {
   filename: string;
   folder: string | null;
   kind: "cv" | "cover" | "unknown";
+  company?: string;
+  role?: string;
   date: string | null;
   reportId: string | null;
   format: string | null;
@@ -112,9 +114,24 @@ export default function DocumentsPage() {
     list.push(doc);
     groups.set(key, list);
   }
+  // A per-job folder is named "{Company} - {Role}". A flat file has no such
+  // name, so it takes the tracker's company and role (upstream's
+  // presentDocument) when the report links to a row.
+  const namesFor = (title: string, docs: DocumentItem[]) => {
+    if (docs[0]?.folder) {
+      const [company, ...rest] = title.split(" - ");
+      return { company, role: rest.join(" - ") };
+    }
+    const named = docs.find((d) => d.company);
+    return { company: named?.company ?? "", role: named?.role ?? "" };
+  };
   const q = query.trim().toLowerCase();
   const shown = [...groups.entries()]
-    .filter(([title]) => !q || title.toLowerCase().includes(q))
+    .filter(([title, docs]) => {
+      if (!q) return true;
+      const { company, role } = namesFor(title, docs);
+      return [title, company, role].some((s) => s.toLowerCase().includes(q));
+    })
     .sort(
       (a, b) =>
         Math.max(...b[1].map((d) => d.mtimeMs)) - Math.max(...a[1].map((d) => d.mtimeMs)),
@@ -151,8 +168,7 @@ export default function DocumentsPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {shown.map(([title, docs]) => {
-          const [company, ...rest] = title.split(" - ");
-          const role = rest.join(" - ");
+          const { company, role } = namesFor(title, docs);
           const sorted = [...docs].sort((a, b) => (a.kind === "cv" ? -1 : b.kind === "cv" ? 1 : 0));
           const date = docs.map((d) => d.date).filter(Boolean).sort().pop();
           return (
