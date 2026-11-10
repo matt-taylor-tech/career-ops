@@ -36,7 +36,7 @@ test("same-day events keep a stable order: scan, report, status, assessment, int
   });
   const kinds = t.events.filter((e) => e.day === "2026-10-28").map((e) => e.kind);
   assert.deepEqual(kinds, ["scan", "report", "status", "status", "assessment", "followup"]);
-  assert.deepEqual(KIND_ORDER, ["scan", "report", "status", "assessment", "interview", "followup"]);
+  assert.deepEqual(KIND_ORDER, ["scan", "report", "document", "status", "assessment", "interview", "email", "followup", "marker"]);
   const statuses = t.events.filter((e) => e.kind === "status" && e.day === "2026-10-28").map((e) => e.title);
   assert.deepEqual(statuses, ["Evaluated → Applied", "Applied → Interview"]);
 });
@@ -176,4 +176,85 @@ test("interview rounds: a Date/Time cell without a leading date is kept, undated
     interviews: [round({ "Date/Time": "not scheduled yet", Status: "Pending" }, 7), round({ "Date/Time": "2026-10-28" }, 7)],
   });
   assert.deepEqual(t.events.map((e) => [e.day, e.meta]), [["2026-10-28", "Completed"], [null, "not scheduled yet · Pending"]]);
+});
+
+// ── Documents (pdf-index.tsv), emails (reply-candidates.json), unlogged status ──
+
+const manifest = [
+  { reportId: "9", pdf: "output/Acme - IT/cv_x.pdf", date: "2026-10-06", kind: "cv" },
+  { reportId: "9", pdf: "output/Acme - IT/coverletter_x.pdf", date: "2026-10-06", kind: "cover" },
+  { reportId: "7", pdf: "output/Other/cv_x.pdf", date: "2026-10-06", kind: "cv" },
+];
+
+test("documents match the REPORT number, are labelled by kind and show the file name", () => {
+  const t = buildApplicationTimeline({ appNum: 7, reportNum: 9, documents: manifest });
+  assert.deepEqual(t.events.map((e) => [e.kind, e.title, e.meta]), [
+    ["document", "Resume generated", "cv_x.pdf"],
+    ["document", "Cover letter generated", "coverletter_x.pdf"],
+  ]);
+});
+
+test("a same-day regeneration of the same kind is one event", () => {
+  const t = buildApplicationTimeline({ appNum: 9, documents: [manifest[0], { ...manifest[0], pdf: "output/Acme - IT/v2/cv_x.pdf" }] });
+  assert.equal(t.events.length, 1);
+});
+
+const mail = (over = {}) => ({ message_id: "m1", from: "Recruiter <ana@acme.com>", subject: "Next steps", body_snippet: "Hi", date: "2026-10-28", ...over });
+
+test("only emails the reply matcher paired to this row appear, with direction from the candidate's own addresses", () => {
+  const t = buildApplicationTimeline({
+    appNum: 7,
+    selfAddresses: ["me@example.com"],
+    emails: [
+      { candidate: mail(), matchedNum: 7 },
+      { candidate: mail({ message_id: "m2", from: "me@example.com", subject: "Re: Next steps" }), matchedNum: 7 },
+      { candidate: mail({ message_id: "m3", subject: "Unpaired" }), matchedNum: null },
+      { candidate: mail({ message_id: "m4", subject: "Other row" }), matchedNum: 8 },
+    ],
+  });
+  assert.deepEqual(t.events.map((e) => [e.title, e.meta]), [
+    ["Next steps", "received · Recruiter <ana@acme.com>"],
+    ["Re: Next steps", "sent · me@example.com"],
+  ]);
+});
+
+test("without the candidate's addresses, emails carry no direction; long snippets are trimmed", () => {
+  const t = buildApplicationTimeline({ appNum: 7, emails: [{ candidate: mail({ body_snippet: "x".repeat(500) }), matchedNum: 7 }] });
+  assert.equal(t.events[0].meta, "Recruiter <ana@acme.com>");
+  assert.ok(t.events[0].detail.length <= 220 && t.events[0].detail.endsWith("…"));
+});
+
+test("an unreadable reply-candidates or PDF manifest is a warning beside the other events", () => {
+  const t = buildApplicationTimeline({ appNum: 7, statusLog: log, emails: { error: "Unexpected token" }, documents: { error: "EACCES" } });
+  assert.equal(t.warnings.length, 2);
+  assert.ok(t.warnings.some((w) => w.includes("data/reply-candidates.json")));
+  assert.ok(t.warnings.some((w) => w.includes("data/pdf-index.tsv")));
+  assert.equal(t.empty, false);
+});
+
+test("a current status the ledger never reached adds a final undated marker", () => {
+  const t = buildApplicationTimeline({ appNum: 7, statusLog: log.slice(0, 1), currentStatus: "Interview" });
+  const last = t.events.at(-1);
+  assert.equal(last.kind, "marker");
+  assert.equal(last.day, null);
+  assert.equal(last.title, "Current status: Interview");
+});
+
+test("no marker when the ledger ends at the current status, for a never-moved Evaluated row, or when the log is unreadable", () => {
+  assert.ok(!buildApplicationTimeline({ appNum: 7, statusLog: log, currentStatus: "rejected" }).events.some((e) => e.kind === "marker"));
+  assert.ok(!buildApplicationTimeline({ appNum: 9, statusLog: log, currentStatus: "Evaluated" }).events.some((e) => e.kind === "marker"));
+  assert.ok(!buildApplicationTimeline({ appNum: 7, statusLog: { error: "EACCES" }, currentStatus: "Interview" }).events.some((e) => e.kind === "marker"));
+  // A row with no ledger lines that has moved past Evaluated is a gap.
+  assert.ok(buildApplicationTimeline({ appNum: 9, statusLog: log, currentStatus: "Applied" }).events.some((e) => e.kind === "marker"));
+});
+
+test("same-day order places documents after reports and emails before follow-ups", () => {
+  const t = buildApplicationTimeline({
+    appNum: 9,
+    reports: ["009-acme-2026-10-06.md"],
+    documents: manifest,
+    followups: [{ appNum: 9, date: "2026-10-06", channel: "Email", contact: "Ana", notes: "" }],
+    emails: [{ candidate: mail({ date: "2026-10-06" }), matchedNum: 9 }],
+  });
+  assert.deepEqual(t.events.map((e) => e.kind), ["report", "document", "document", "email", "followup"]);
 });

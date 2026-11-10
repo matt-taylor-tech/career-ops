@@ -6,6 +6,10 @@ import { normalizeUrl } from "@/lib/core/url-key.mjs";
 import { careerOpsRoot, readApplications, readApplicationStatusLog, readScanDates, reportFilesForNumber } from "@/lib/career-ops";
 import { followupsLogPath } from "@/lib/followups-server";
 import { parseStatusLog } from "@/lib/pipeline-sankey.mjs";
+import { parsePdfManifestRows } from "@/lib/apply/cv-selection.mjs";
+import { resolvePdfIndexPath } from "@/lib/core/pdf-index";
+import { getProfilePath } from "@/lib/core/profile-path.mjs";
+import { resolveTrackerPath } from "@/lib/core/tracker-files.mjs";
 import { buildApplicationTimeline } from "@/lib/application-timeline.mjs";
 
 // Reads the files the timeline merges. Parsing is the core's wherever the core
@@ -74,6 +78,61 @@ async function readInterviewRounds(root: string) {
   return parseActiveInterviews(text).map((row) => ({ row, matchedNum: matchInterviewRow(row, entries).entry?.num ?? null }));
 }
 
+/** generate-pdf.mjs's manifest, located by the core's resolvePdfIndexPath (it
+ *  honours CAREER_OPS_PDF_INDEX) and parsed by the web's existing manifest
+ *  parser. An older checkout without that resolver reads as "not there". */
+async function readDocuments() {
+  const file = await resolvePdfIndexPath();
+  if (file === null) return null;
+  const text = readOptional(file);
+  return text === null ? null : parsePdfManifestRows(text);
+}
+
+type ReplyCandidate = { message_id?: string; from?: string; subject?: string; body_snippet?: string; date?: string };
+type ReplyMatch = { message_id?: string; application_num: number | null; confidence?: string };
+
+/** reply-watch's intake file (same path rule: CAREER_OPS_REPLY_CANDIDATES, else
+ *  data/reply-candidates.json), each email paired by the core's matchCandidates
+ *  — the matcher reply-watch itself uses — against the tracker rows and
+ *  follow-up domains it is given. Only a single, non-low-confidence match
+ *  pairs: a tie, a company-wide rejection, or a role-only hit is left out. */
+async function readEmails(root: string) {
+  const file = process.env.CAREER_OPS_REPLY_CANDIDATES || path.join(root, "data", "reply-candidates.json");
+  const text = readOptional(file);
+  if (text === null) return null;
+  const candidates: unknown = JSON.parse(text);
+  if (!Array.isArray(candidates)) throw new Error("expected a JSON array of emails");
+  const [{ matchCandidates }, { resolveColumns, parseTrackerRow }, { parseFollowups }] = await Promise.all([
+    core<{ matchCandidates: (c: ReplyCandidate[], apps: unknown[], f: unknown[]) => ReplyMatch[] }>("reply-matcher"),
+    core<{ resolveColumns: (l: string[]) => unknown; parseTrackerRow: (l: string, c: unknown) => unknown }>("tracker-parse"),
+    core<{ parseFollowups: (s: string) => unknown[] }>("followup-cadence"),
+  ]);
+  // The tracker as reply-watch loads it (resolveColumns + parseTrackerRow).
+  const lines = (readOptional(resolveTrackerPath(root)) ?? "").split("\n");
+  const colmap = resolveColumns(lines);
+  const apps = lines.map((l) => parseTrackerRow(l, colmap)).filter(Boolean);
+  const followupsText = readOptional(followupsLogPath());
+  const followups = followupsText === null ? [] : parseFollowups(followupsText);
+  const byId = new Map<string, ReplyMatch>();
+  for (const m of matchCandidates(candidates as ReplyCandidate[], apps, followups)) if (m.message_id) byId.set(m.message_id, m);
+  return (candidates as ReplyCandidate[]).map((candidate) => {
+    const m = candidate.message_id ? byId.get(candidate.message_id) : undefined;
+    const paired = m && m.application_num !== null && m.confidence !== "low";
+    return { candidate, matchedNum: paired ? m!.application_num : null };
+  });
+}
+
+/** The candidate's own addresses, read by the core's loadSelfIdentities from
+ *  config/profile.yml (candidate.email + alternate_emails). Fails open. */
+async function readSelfAddresses(root: string): Promise<string[]> {
+  try {
+    const { loadSelfIdentities } = await core<{ loadSelfIdentities: (p: string) => Set<string> }>("followup-cadence");
+    return [...loadSelfIdentities(getProfilePath(root))];
+  } catch {
+    return [];
+  }
+}
+
 function firstSeenFor(url: string | null | undefined): string | null {
   if (!url) return null;
   const dates = readScanDates();
@@ -93,7 +152,7 @@ export async function readApplicationTimeline(opts: {
   postingUrl?: string | null;
 }): Promise<ApplicationTimeline> {
   const root = careerOpsRoot();
-  const [statusLog, followups, assessments, interviews, reports, firstSeen] = await Promise.all([
+  const [statusLog, followups, assessments, interviews, reports, firstSeen, documents, emails, selfAddresses] = await Promise.all([
     source(() => {
       const text = readApplicationStatusLog();
       return text === null ? null : parseStatusLog(text);
@@ -115,7 +174,11 @@ export async function readApplicationTimeline(opts: {
     // don't, the row number names some other row's report.
     source(() => reportFilesForNumber(opts.reportNum ?? opts.appNum)),
     source(() => firstSeenFor(opts.postingUrl)),
+    source(readDocuments),
+    source(() => readEmails(root)),
+    readSelfAddresses(root),
   ]);
+  const currentStatus = readApplications().find((a) => Number.parseInt(a.n, 10) === opts.appNum)?.status ?? null;
   return buildApplicationTimeline({
     appNum: opts.appNum,
     reportNum: opts.reportNum,
@@ -125,5 +188,9 @@ export async function readApplicationTimeline(opts: {
     interviews,
     reports,
     firstSeen,
+    documents,
+    emails,
+    selfAddresses,
+    currentStatus,
   });
 }

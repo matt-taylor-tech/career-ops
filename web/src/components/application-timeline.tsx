@@ -17,6 +17,10 @@ const KIND_CLASSES: Record<string, string> = {
   assessment: "bg-fuchsia-500/15 text-fuchsia-800 dark:text-fuchsia-300",
   interview: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
   followup: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+  document: "bg-cyan-500/15 text-cyan-800 dark:text-cyan-300",
+  email: "bg-pink-500/15 text-pink-800 dark:text-pink-300",
+  // Not an event but a gap in the record: neutral, outlined.
+  marker: "bg-transparent text-muted ring-1 ring-inset ring-border",
 };
 
 export function ApplicationTimeline({ timeline }: { timeline: Timeline }) {
@@ -36,7 +40,7 @@ export function ApplicationTimeline({ timeline }: { timeline: Timeline }) {
         ))}
         {empty ? (
           <p className="text-sm text-muted">
-            Nothing recorded for this application yet. Status changes, interview rounds, logged follow-ups, assessments and reports appear here as they happen.
+            Nothing recorded for this application yet. Reports, generated resumes and cover letters, status changes, interview rounds, emails, logged follow-ups and assessments appear here as they happen.
           </p>
         ) : (
           <ol className="space-y-3">

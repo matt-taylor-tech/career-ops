@@ -17,6 +17,15 @@
 //                The server hands in each row with the `matchedNum` that
 //                matcher chose; a row it could not pair has none and is left
 //                out of every application's timeline rather than guessed.
+//   document     data/pdf-index.tsv rows (generate-pdf.mjs's manifest, parsed by
+//                parsePdfManifestRows), matched by REPORT number like reports
+//                and assessments.
+//   email        data/reply-candidates.json (reply-watch's intake), paired with
+//                a tracker row by the core's matchCandidates (reply-matcher.mjs).
+//                Same contract as interviews: the server hands in `matchedNum`,
+//                set only for a single, non-low-confidence match.
+//   marker       the tracker row's current status when the status log does not
+//                end there — a change made by hand that the ledger never saw.
 //
 // Each source arrives as one of three shapes, and the difference matters:
 //
@@ -28,17 +37,21 @@
 //                       happened" when the truth is "we could not tell".
 //   an array            the parsed rows (possibly empty).
 
-/** Same-day order: discovered, evaluated, moved through the tracker, tested,
- *  interviewed, followed up (a thank-you comes after the call it thanks for). */
-export const KIND_ORDER = ["scan", "report", "status", "assessment", "interview", "followup"];
+/** Same-day order: discovered, evaluated, documents built, moved through the
+ *  tracker, tested, interviewed, emailed, followed up (a thank-you comes after
+ *  the call it thanks for). The unlogged-status marker always comes last. */
+export const KIND_ORDER = ["scan", "report", "document", "status", "assessment", "interview", "email", "followup", "marker"];
 
 export const KIND_LABELS = {
   scan: "Scan",
   report: "Report",
+  document: "Document",
   status: "Status",
   assessment: "Assessment",
   interview: "Interview",
+  email: "Email",
   followup: "Follow-up",
+  marker: "Current",
 };
 
 const SOURCE_NAMES = {
@@ -48,7 +61,12 @@ const SOURCE_NAMES = {
   interviews: "interview log (data/active-interviews.md)",
   reports: "reports folder (reports/)",
   scan: "scan history (data/scan-history.tsv)",
+  documents: "PDF manifest (data/pdf-index.tsv)",
+  emails: "reply candidates (data/reply-candidates.json)",
 };
+
+const DOCUMENT_TITLES = { cv: "Resume generated", cover: "Cover letter generated" };
+const SNIPPET_MAX = 220;
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -176,6 +194,63 @@ function interviewEvents(entries, appNum) {
     });
 }
 
+/** pdf-index.tsv rows for this report. The manifest keeps one row per report
+ *  and kind, so a regeneration replaces its row; same-day duplicates that do
+ *  slip through collapse in the de-duplication below (meta is not in the key). */
+function documentEvents(rows_, numbers) {
+  return rows(rows_)
+    .filter((r) => numbers.has(Number.parseInt(String(r?.reportId ?? ""), 10)))
+    .map((r) => ({
+      kind: "document",
+      date: r.date,
+      title: DOCUMENT_TITLES[r.kind] ?? "Document generated",
+      detail: "",
+      meta: String(r.pdf ?? "").split(/[\\/]/).pop() ?? "",
+    }));
+}
+
+/** Emails the core's reply matcher paired with this row. Direction comes from
+ *  the candidate's own addresses (profile.yml), when there are any. */
+function emailEvents(entries, appNum, selfAddresses) {
+  const self = new Set(rows(selfAddresses).map((a) => clean(a).toLowerCase()).filter(Boolean));
+  return rows(entries)
+    .filter((e) => Number(e?.matchedNum) === appNum)
+    .map((e) => {
+      const c = e.candidate ?? {};
+      const from = present(c.from);
+      const address = (from.match(/[^\s<>]+@[^\s<>]+/)?.[0] ?? "").toLowerCase();
+      const direction = self.size && address ? (self.has(address) ? "sent" : "received") : "";
+      let snippet = present(c.body_snippet);
+      if (snippet.length > SNIPPET_MAX) snippet = `${snippet.slice(0, SNIPPET_MAX - 1).trimEnd()}…`;
+      return {
+        kind: "email",
+        date: c.date,
+        title: present(c.subject) || "(no subject)",
+        detail: snippet,
+        meta: [direction, from].filter(Boolean).join(" · "),
+      };
+    });
+}
+
+/** The tracker's current status, when the status log never reached it. A row
+ *  with no ledger lines starts at Evaluated (its report is the evaluation), so
+ *  that state is not a gap. Undated: the ledger is the only thing that dates a
+ *  status change, and it has none for this one. */
+function markerEvents(currentStatus, log, appNum) {
+  const current = present(currentStatus);
+  if (!current) return [];
+  const mine = rows(log).filter((r) => Number(r.num) === appNum && present(r.to));
+  const last = mine.length ? present(mine[mine.length - 1].to) : "Evaluated";
+  if (last.toLowerCase() === current.toLowerCase()) return [];
+  return [{
+    kind: "marker",
+    date: "",
+    title: `Current status: ${current}`,
+    detail: "This change is not in the status log (data/status-log.tsv), so when it happened is not recorded.",
+    meta: "",
+  }];
+}
+
 function scanEvents(firstSeen) {
   const day = Array.isArray(firstSeen) ? firstSeen[0] : firstSeen;
   return day && !isError(day) ? [{ kind: "scan", date: day, title: "First seen in a scan", detail: "", meta: "" }] : [];
@@ -192,6 +267,11 @@ function scanEvents(firstSeen) {
  *   active-interviews.md rows with the tracker # the core matcher paired them to
  * @param {Array|{error:string}|null} [input.reports]     report file names for the row
  * @param {string|{error:string}|null} [input.firstSeen]  YYYY-MM-DD
+ * @param {Array|{error:string}|null} [input.documents]   parsePdfManifestRows() rows
+ * @param {Array<{candidate:object,matchedNum:number|null}>|{error:string}|null} [input.emails]
+ *   reply-candidates.json entries with the tracker # the core reply matcher paired them to
+ * @param {string[]} [input.selfAddresses]  the candidate's own email addresses (lower-case)
+ * @param {string|null} [input.currentStatus]  the tracker row's Status cell
  * @returns {{events: Array<{kind:string,date:string,day:string|null,title:string,detail:string,meta:string}>, warnings: string[], empty: boolean}}
  */
 export function buildApplicationTimeline(input) {
@@ -204,6 +284,8 @@ export function buildApplicationTimeline(input) {
     interviews: input?.interviews,
     reports: input?.reports,
     scan: input?.firstSeen,
+    documents: input?.documents,
+    emails: input?.emails,
   };
   for (const [key, value] of Object.entries(sources)) {
     if (isError(value)) warnings.push(`Could not read the ${SOURCE_NAMES[key]}: ${value.error}`);
@@ -221,8 +303,12 @@ export function buildApplicationTimeline(input) {
     ...reportEvents(sources.reports),
     ...statusEvents(sources.status, appNum),
     ...assessmentEvents(sources.assessments, numbers),
+    ...documentEvents(sources.documents, numbers),
     ...interviewEvents(sources.interviews, appNum),
+    ...emailEvents(sources.emails, appNum, input?.selfAddresses),
     ...followupEvents(sources.followups, appNum),
+    // A status log that could not be read says nothing about where it ends.
+    ...(isError(sources.status) ? [] : markerEvents(input?.currentStatus, sources.status, appNum)),
   ];
 
   // The same fact written twice (a duplicated ledger line, a follow-up logged
