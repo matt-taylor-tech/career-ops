@@ -92,18 +92,42 @@ export function contactLinkIndex(contacts) {
   return index;
 }
 
+// Words too generic to identify a company on their own.
+const GENERIC_COMPANY_WORDS = new Set([
+  "group", "groups", "company", "corp", "corporation", "incorporated", "limited", "holdings",
+  "services", "solutions", "systems", "technologies", "technology", "software", "health",
+  "healthcare", "care", "primary", "partners", "global", "international", "consulting",
+]);
+
+/**
+ * True when the email text names the company: any distinctive word (4+ letters,
+ * not a generic suffix) of the company name appears as a whole word.
+ * @param {string} company
+ * @param {string} text
+ */
+export function companyMentioned(company, text) {
+  const words = String(company ?? "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !GENERIC_COMPANY_WORDS.has(w));
+  if (!words.length) return false;
+  const haystack = ` ${String(text ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ")} `;
+  return words.some((w) => haystack.includes(` ${w} `));
+}
+
 /**
  * Which application an email belongs to. The core matcher's pairing wins; a
  * saved contact's tracker link only settles an email the matcher left
- * unpaired (a tie between two rows of the same company, say), and only when
- * that row exists.
- * @param {{matchedNum: number|null, senderEmail: string|null, contactIndex: Map<string, number>, knownNums: Set<number>}} args
+ * unpaired (a tie between two rows of the same company, say), only when that
+ * row exists, and only when the email names that row's company. A recruiter
+ * linked to one application often writes about another (a new client), and
+ * that email must not land on the linked row.
+ * @param {{matchedNum: number|null, senderEmail: string|null, text?: string, contactIndex: Map<string, number>, knownRows: Map<number, string>}} args
+ *   `text` is the email's subject, snippet and sender; `knownRows` maps tracker number → company.
  * @returns {number|null}
  */
-export function resolveEmailApplication({ matchedNum, senderEmail, contactIndex, knownNums }) {
+export function resolveEmailApplication({ matchedNum, senderEmail, text = "", contactIndex, knownRows }) {
   if (matchedNum !== null && matchedNum !== undefined) return matchedNum;
   const linked = senderEmail ? contactIndex?.get(String(senderEmail).toLowerCase()) : undefined;
-  return linked !== undefined && knownNums?.has(linked) ? linked : null;
+  if (linked === undefined || !knownRows?.has(linked)) return null;
+  return companyMentioned(knownRows.get(linked), text) ? linked : null;
 }
 
 /** The calendar day an event happened on, or null when the cell is not one. */

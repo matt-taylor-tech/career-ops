@@ -128,15 +128,20 @@ async function readEmails(root: string) {
     contactIndex = contactLinkIndex(parseContacts(contactsText).contacts);
     senderEmail = (from) => parseFromHeader(from).email;
   }
-  const knownNums = new Set(readApplications().map((a) => Number(a.n)).filter(Number.isInteger));
+  const knownRows = new Map<number, string>();
+  for (const a of readApplications()) {
+    const n = Number(a.n);
+    if (Number.isInteger(n)) knownRows.set(n, a.company);
+  }
   return (candidates as ReplyCandidate[]).map((candidate) => {
     const m = candidate.message_id ? byId.get(candidate.message_id) : undefined;
     const paired = m && m.application_num !== null && m.confidence !== "low";
     const matchedNum = resolveEmailApplication({
       matchedNum: paired ? m!.application_num : null,
       senderEmail: senderEmail(candidate.from ?? ""),
+      text: [candidate.subject, candidate.body_snippet, candidate.from].filter(Boolean).join(" "),
       contactIndex,
-      knownNums,
+      knownRows,
     });
     return { candidate, matchedNum };
   });

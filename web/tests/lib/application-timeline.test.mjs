@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildApplicationTimeline, eventDay, KIND_ORDER, contactLinkIndex, resolveEmailApplication } from "../../src/lib/application-timeline.mjs";
+import { buildApplicationTimeline, eventDay, KIND_ORDER, contactLinkIndex, resolveEmailApplication, companyMentioned } from "../../src/lib/application-timeline.mjs";
 
 const log = [
   { num: 7, date: "2026-10-28", from: "Evaluated", to: "Applied", source: "web", note: "" },
@@ -274,12 +274,24 @@ test("contactLinkIndex keys sender addresses by tracker link and drops conflicti
   assert.equal(index.size, 1);
 });
 
-test("resolveEmailApplication: the matcher wins, a contact link settles only unpaired emails on existing rows", () => {
-  const contactIndex = new Map([["adam@example.com", 98], ["gone@example.com", 999]]);
-  const knownNums = new Set([50, 98]);
-  assert.equal(resolveEmailApplication({ matchedNum: 50, senderEmail: "adam@example.com", contactIndex, knownNums }), 50);
-  assert.equal(resolveEmailApplication({ matchedNum: null, senderEmail: "ADAM@example.com", contactIndex, knownNums }), 98);
-  assert.equal(resolveEmailApplication({ matchedNum: null, senderEmail: "gone@example.com", contactIndex, knownNums }), null);
-  assert.equal(resolveEmailApplication({ matchedNum: null, senderEmail: null, contactIndex, knownNums }), null);
-  assert.equal(resolveEmailApplication({ matchedNum: null, senderEmail: "stranger@example.com", contactIndex, knownNums }), null);
+test("resolveEmailApplication: the matcher wins, a contact link settles only unpaired emails that name the linked row's company", () => {
+  const contactIndex = new Map([["adam@example.com", 98], ["gone@example.com", 999], ["recruiter@agency.example", 195]]);
+  const knownRows = new Map([[50, "Merative"], [98, "Merative"], [195, "Hopscotch Primary Care"]]);
+  const merativeText = "Re: Application for M365 Engineer w/ Merative";
+  assert.equal(resolveEmailApplication({ matchedNum: 50, senderEmail: "adam@example.com", text: merativeText, contactIndex, knownRows }), 50);
+  assert.equal(resolveEmailApplication({ matchedNum: null, senderEmail: "ADAM@example.com", text: merativeText, contactIndex, knownRows }), 98);
+  assert.equal(resolveEmailApplication({ matchedNum: null, senderEmail: "gone@example.com", text: merativeText, contactIndex, knownRows }), null);
+  assert.equal(resolveEmailApplication({ matchedNum: null, senderEmail: null, text: merativeText, contactIndex, knownRows }), null);
+  assert.equal(resolveEmailApplication({ matchedNum: null, senderEmail: "stranger@example.com", text: merativeText, contactIndex, knownRows }), null);
+  // A recruiter linked to one application writing about a different client stays unpaired.
+  assert.equal(resolveEmailApplication({ matchedNum: null, senderEmail: "recruiter@agency.example", text: "Next Steps @ Hopscotch", contactIndex, knownRows }), 195);
+  assert.equal(resolveEmailApplication({ matchedNum: null, senderEmail: "recruiter@agency.example", text: "Next Steps @ AdvanCell", contactIndex, knownRows }), null);
+});
+
+test("companyMentioned matches a distinctive word of the company, not generic suffixes", () => {
+  assert.equal(companyMentioned("Hopscotch Primary Care", "Next Steps @ Hopscotch"), true);
+  assert.equal(companyMentioned("Hopscotch Primary Care", "Your primary care visit"), false);
+  assert.equal(companyMentioned("Merative", "Application for M365 Engineer w/ Merative"), true);
+  assert.equal(companyMentioned("Solen Software Group", "Next Steps @ AdvanCell"), false);
+  assert.equal(companyMentioned("", "anything"), false);
 });
