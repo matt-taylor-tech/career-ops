@@ -7,13 +7,16 @@ import type { ApplicationTimeline as Timeline } from "@/lib/application-timeline
 // file the core already writes (status log, follow-up log, assessment log,
 // interview log, reports, scan history), so nothing here can drift from the CLI.
 
-const TONES: Record<string, "good" | "warn" | "bad" | "info" | "muted"> = {
-  scan: "muted",
-  report: "info",
-  status: "good",
-  assessment: "warn",
-  interview: "good",
-  followup: "info",
+// One hue per event kind so the column reads at a glance. Badge's tones are a
+// grade scale (good/warn/bad), so kinds get their own categorical palette that
+// stays clear of green/amber/red (grades) and orange (active/selected).
+const KIND_CLASSES: Record<string, string> = {
+  scan: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
+  report: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
+  status: "bg-teal-500/15 text-teal-800 dark:text-teal-300",
+  assessment: "bg-fuchsia-500/15 text-fuchsia-800 dark:text-fuchsia-300",
+  interview: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
+  followup: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
 };
 
 export function ApplicationTimeline({ timeline }: { timeline: Timeline }) {
@@ -42,7 +45,7 @@ export function ApplicationTimeline({ timeline }: { timeline: Timeline }) {
                 <span className="pt-0.5 font-mono text-xs tabular-nums text-faint">{e.day ?? "undated"}</span>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={TONES[e.kind] ?? "muted"}>{KIND_LABELS[e.kind as keyof typeof KIND_LABELS] ?? e.kind}</Badge>
+                    <Badge className={KIND_CLASSES[e.kind]}>{KIND_LABELS[e.kind as keyof typeof KIND_LABELS] ?? e.kind}</Badge>
                     <span className="font-medium text-foreground">{e.title}</span>
                     {e.meta && <span className="truncate font-mono text-[11px] text-faint">{e.meta}</span>}
                   </div>
