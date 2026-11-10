@@ -11,6 +11,12 @@
 //   assessment   data/assessments.tsv rows, parsed by the core's parseAssessments
 //   report       reports/{num}-*.md files for the row (initial and re-evaluations)
 //   scan         the date the posting was first seen in data/scan-history.tsv
+//   interview    data/active-interviews.md rounds, parsed by the core's
+//                parseActiveInterviews and paired with a tracker row by the
+//                core's matchInterviewRow (`#N in tracker`, then Company+Role).
+//                The server hands in each row with the `matchedNum` that
+//                matcher chose; a row it could not pair has none and is left
+//                out of every application's timeline rather than guessed.
 //
 // Each source arrives as one of three shapes, and the difference matters:
 //
@@ -22,14 +28,16 @@
 //                       happened" when the truth is "we could not tell".
 //   an array            the parsed rows (possibly empty).
 
-/** Same-day order: discovered, evaluated, moved through the tracker, tested, followed up. */
-export const KIND_ORDER = ["scan", "report", "status", "assessment", "followup"];
+/** Same-day order: discovered, evaluated, moved through the tracker, tested,
+ *  interviewed, followed up (a thank-you comes after the call it thanks for). */
+export const KIND_ORDER = ["scan", "report", "status", "assessment", "interview", "followup"];
 
 export const KIND_LABELS = {
   scan: "Scan",
   report: "Report",
   status: "Status",
   assessment: "Assessment",
+  interview: "Interview",
   followup: "Follow-up",
 };
 
@@ -37,6 +45,7 @@ const SOURCE_NAMES = {
   status: "status log (data/status-log.tsv)",
   followups: "follow-up log (data/follow-ups.md)",
   assessments: "assessment log (data/assessments.tsv)",
+  interviews: "interview log (data/active-interviews.md)",
   reports: "reports folder (reports/)",
   scan: "scan history (data/scan-history.tsv)",
 };
@@ -48,6 +57,13 @@ export function eventDay(raw) {
   const s = String(raw ?? "").trim();
   const day = s.slice(0, 10);
   return ISO_DAY.test(day) ? day : null;
+}
+
+// active-interviews.md column lookup, case-insensitive like the core's
+// findColumn: the header is candidate-edited markdown.
+function cell(row, name) {
+  const key = Object.keys(row || {}).find((k) => k.trim().toLowerCase() === name);
+  return key ? present(row[key]) : "";
 }
 
 function isError(source) {
@@ -138,6 +154,28 @@ function reportEvents(files) {
   }));
 }
 
+/** Rounds the core's matcher paired with this row. The Date/Time cell keeps
+ *  its time ("2026-11-04 10:00 ET"); a cell with no YYYY-MM-DD at its start
+ *  sorts as undated rather than being guessed. */
+function interviewEvents(entries, appNum) {
+  return rows(entries)
+    .filter((e) => Number(e?.matchedNum) === appNum)
+    .map((e) => {
+      const row = e.row ?? {};
+      const when = cell(row, "date/time");
+      const time = eventDay(when) ? when.slice(10).trim() : when;
+      const interviewer = cell(row, "interviewer");
+      const notes = cell(row, "notes").replace(/#\s*\d+\s+in\s+tracker\s*[;,]?\s*/i, "").trim();
+      return {
+        kind: "interview",
+        date: when,
+        title: [cell(row, "round") || "Interview", interviewer].filter(Boolean).join(" · "),
+        detail: notes,
+        meta: [time, cell(row, "status")].filter(Boolean).join(" · "),
+      };
+    });
+}
+
 function scanEvents(firstSeen) {
   const day = Array.isArray(firstSeen) ? firstSeen[0] : firstSeen;
   return day && !isError(day) ? [{ kind: "scan", date: day, title: "First seen in a scan", detail: "", meta: "" }] : [];
@@ -150,6 +188,8 @@ function scanEvents(firstSeen) {
  * @param {Array|{error:string}|null} [input.statusLog]   web parseStatusLog() rows
  * @param {Array|{error:string}|null} [input.followups]   core parseFollowups() entries
  * @param {Array|{error:string}|null} [input.assessments] core parseAssessments().rows
+ * @param {Array<{row:object,matchedNum:number|null}>|{error:string}|null} [input.interviews]
+ *   active-interviews.md rows with the tracker # the core matcher paired them to
  * @param {Array|{error:string}|null} [input.reports]     report file names for the row
  * @param {string|{error:string}|null} [input.firstSeen]  YYYY-MM-DD
  * @returns {{events: Array<{kind:string,date:string,day:string|null,title:string,detail:string,meta:string}>, warnings: string[], empty: boolean}}
@@ -161,6 +201,7 @@ export function buildApplicationTimeline(input) {
     status: input?.statusLog,
     followups: input?.followups,
     assessments: input?.assessments,
+    interviews: input?.interviews,
     reports: input?.reports,
     scan: input?.firstSeen,
   };
@@ -180,6 +221,7 @@ export function buildApplicationTimeline(input) {
     ...reportEvents(sources.reports),
     ...statusEvents(sources.status, appNum),
     ...assessmentEvents(sources.assessments, numbers),
+    ...interviewEvents(sources.interviews, appNum),
     ...followupEvents(sources.followups, appNum),
   ];
 

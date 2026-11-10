@@ -25,7 +25,7 @@ test("events are oldest first and filtered to the row", () => {
   assert.deepEqual(t.warnings, []);
 });
 
-test("same-day events keep a stable order: scan, report, status, assessment, follow-up, then file order", () => {
+test("same-day events keep a stable order: scan, report, status, assessment, interview, follow-up, then file order", () => {
   const t = buildApplicationTimeline({
     appNum: 7,
     followups: [{ appNum: 7, date: "2026-10-28", channel: "Email", contact: "Ana", notes: "Thanks" }],
@@ -36,7 +36,7 @@ test("same-day events keep a stable order: scan, report, status, assessment, fol
   });
   const kinds = t.events.filter((e) => e.day === "2026-10-28").map((e) => e.kind);
   assert.deepEqual(kinds, ["scan", "report", "status", "status", "assessment", "followup"]);
-  assert.deepEqual(KIND_ORDER, ["scan", "report", "status", "assessment", "followup"]);
+  assert.deepEqual(KIND_ORDER, ["scan", "report", "status", "assessment", "interview", "followup"]);
   const statuses = t.events.filter((e) => e.kind === "status" && e.day === "2026-10-28").map((e) => e.title);
   assert.deepEqual(statuses, ["Evaluated → Applied", "Applied → Interview"]);
 });
@@ -124,4 +124,56 @@ test("eventDay accepts a timestamp and rejects garbage", () => {
   assert.equal(eventDay("2026-11-10T09:00:00Z"), "2026-11-10");
   assert.equal(eventDay("Nov 10"), null);
   assert.equal(eventDay(undefined), null);
+});
+
+// Interview rounds come from data/active-interviews.md. The server pairs each
+// row with a tracker # through the core's matchInterviewRow; this module only
+// filters by that number and shapes the event.
+const round = (cells, matchedNum) => ({
+  row: { Company: "Hopscotch", Role: "Sys Admin", Round: "Screen", "Date/Time": "", Interviewer: "", Status: "Completed", Notes: "", ...cells },
+  matchedNum,
+});
+
+test("interview rounds: only the rows the core matcher paired with this application", () => {
+  const t = buildApplicationTimeline({
+    appNum: 195,
+    interviews: [
+      round({ "Date/Time": "2026-10-28 13:00 ET", Interviewer: "Christian", Notes: "#195 in tracker; Zoom" }, 195),
+      round({ "Date/Time": "2026-11-04 10:00 ET", Round: "Technical interview", Interviewer: "Christian, Nikhil", Notes: "#195 in tracker" }, 195),
+      round({ "Date/Time": "2026-11-09 09:00 ET", Interviewer: "Rick", Notes: "#200 in tracker" }, 200),
+      round({ "Date/Time": "2026-11-05", Interviewer: "Unpaired" }, null),
+    ],
+  });
+  assert.deepEqual(t.events.map((e) => [e.day, e.title, e.meta, e.detail]), [
+    ["2026-10-28", "Screen · Christian", "13:00 ET · Completed", "Zoom"],
+    ["2026-11-04", "Technical interview · Christian, Nikhil", "10:00 ET · Completed", ""],
+  ]);
+});
+
+test("interview rounds: same day, after the status change and before the follow-up", () => {
+  const t = buildApplicationTimeline({
+    appNum: 7,
+    statusLog: [{ num: 7, date: "2026-10-28", from: "Applied", to: "Interview", source: "web", note: "" }],
+    followups: [{ appNum: 7, date: "2026-10-28", channel: "Email", contact: "Ana", notes: "Thank you" }],
+    interviews: [round({ "Date/Time": "2026-10-28 13:00 ET", Notes: "#7 in tracker" }, 7)],
+  });
+  assert.deepEqual(t.events.map((e) => e.kind), ["status", "interview", "followup"]);
+});
+
+test("interview rounds: a missing log is omitted, an unreadable one is a warning", () => {
+  const missing = buildApplicationTimeline({ appNum: 7, statusLog: log, interviews: null });
+  assert.deepEqual(missing.warnings, []);
+  assert.equal(missing.events.length, 3);
+  const broken = buildApplicationTimeline({ appNum: 7, statusLog: log, interviews: { error: "EISDIR: illegal operation on a directory" } });
+  assert.equal(broken.events.length, 3, "the readable sources still show");
+  assert.equal(broken.warnings.length, 1);
+  assert.match(broken.warnings[0], /interview log/);
+});
+
+test("interview rounds: a Date/Time cell without a leading date is kept, undated, at the end", () => {
+  const t = buildApplicationTimeline({
+    appNum: 7,
+    interviews: [round({ "Date/Time": "not scheduled yet", Status: "Pending" }, 7), round({ "Date/Time": "2026-10-28" }, 7)],
+  });
+  assert.deepEqual(t.events.map((e) => [e.day, e.meta]), [["2026-10-28", "Completed"], [null, "not scheduled yet · Pending"]]);
 });

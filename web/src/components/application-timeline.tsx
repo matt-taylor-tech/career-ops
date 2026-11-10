@@ -5,13 +5,14 @@ import type { ApplicationTimeline as Timeline } from "@/lib/application-timeline
 
 // One application's history, oldest first. Read-only: every line comes from a
 // file the core already writes (status log, follow-up log, assessment log,
-// reports, scan history), so nothing here can drift from the CLI.
+// interview log, reports, scan history), so nothing here can drift from the CLI.
 
 const TONES: Record<string, "good" | "warn" | "bad" | "info" | "muted"> = {
   scan: "muted",
   report: "info",
   status: "good",
   assessment: "warn",
+  interview: "good",
   followup: "info",
 };
 
@@ -32,7 +33,7 @@ export function ApplicationTimeline({ timeline }: { timeline: Timeline }) {
         ))}
         {empty ? (
           <p className="text-sm text-muted">
-            Nothing recorded for this application yet. Status changes, logged follow-ups, assessments and reports appear here as they happen.
+            Nothing recorded for this application yet. Status changes, interview rounds, logged follow-ups, assessments and reports appear here as they happen.
           </p>
         ) : (
           <ol className="space-y-3">

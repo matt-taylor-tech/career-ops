@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { resolveCodeRoot, resolveRootScript } from "@/lib/core/code-root.mjs";
 import { normalizeUrl } from "@/lib/core/url-key.mjs";
-import { careerOpsRoot, readApplicationStatusLog, readScanDates, reportFilesForNumber } from "@/lib/career-ops";
+import { careerOpsRoot, readApplications, readApplicationStatusLog, readScanDates, reportFilesForNumber } from "@/lib/career-ops";
 import { followupsLogPath } from "@/lib/followups-server";
 import { parseStatusLog } from "@/lib/pipeline-sankey.mjs";
 import { buildApplicationTimeline } from "@/lib/application-timeline.mjs";
@@ -46,6 +46,33 @@ async function core<T>(name: string): Promise<T> {
 
 type FollowupEntry = { appNum: number; date: string; channel: string; contact: string; notes: string };
 type AssessmentRow = { reportNum: string | null; date: string; platform: string; subject: string; kind: string };
+type InterviewRow = Record<string, string>;
+type TrackerEntry = { num: number; company: string; role: string };
+type InterviewMatch = { entry: TrackerEntry | null };
+
+/** data/active-interviews.md, or the root-level file older installs kept —
+ *  the same fallback the core readers (rejection-latency, close-stale) use. */
+function activeInterviewsPath(root: string): string {
+  const inData = path.join(root, "data", "active-interviews.md");
+  return fs.existsSync(/* turbopackIgnore: true */ inData) ? inData : path.join(root, "active-interviews.md");
+}
+
+/** Every interview round, each tagged with the tracker # the core's matcher
+ *  paired it to (null when it could not pair it confidently). Matching runs
+ *  against the whole tracker, as tracker-sync-check does, so a fuzzy match is
+ *  only taken when it is unambiguous across all rows. */
+async function readInterviewRounds(root: string) {
+  const text = readOptional(activeInterviewsPath(root));
+  if (text === null) return null;
+  const [{ parseActiveInterviews }, { matchInterviewRow }] = await Promise.all([
+    core<{ parseActiveInterviews: (s: string) => InterviewRow[] }>("process-quality"),
+    core<{ matchInterviewRow: (row: InterviewRow, entries: TrackerEntry[]) => InterviewMatch }>("tracker-sync-check"),
+  ]);
+  const entries: TrackerEntry[] = readApplications()
+    .map((a) => ({ num: Number.parseInt(a.n, 10), company: a.company, role: a.role }))
+    .filter((e) => Number.isInteger(e.num));
+  return parseActiveInterviews(text).map((row) => ({ row, matchedNum: matchInterviewRow(row, entries).entry?.num ?? null }));
+}
 
 function firstSeenFor(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -66,7 +93,7 @@ export async function readApplicationTimeline(opts: {
   postingUrl?: string | null;
 }): Promise<ApplicationTimeline> {
   const root = careerOpsRoot();
-  const [statusLog, followups, assessments, reports, firstSeen] = await Promise.all([
+  const [statusLog, followups, assessments, interviews, reports, firstSeen] = await Promise.all([
     source(() => {
       const text = readApplicationStatusLog();
       return text === null ? null : parseStatusLog(text);
@@ -83,6 +110,7 @@ export async function readApplicationTimeline(opts: {
       const { parseAssessments } = await core<{ parseAssessments: (s: string) => { rows: AssessmentRow[] } }>("assessment-log");
       return parseAssessments(text).rows;
     }),
+    source(() => readInterviewRounds(root)),
     // The report number, not the row number: they usually match, but when they
     // don't, the row number names some other row's report.
     source(() => reportFilesForNumber(opts.reportNum ?? opts.appNum)),
@@ -94,6 +122,7 @@ export async function readApplicationTimeline(opts: {
     statusLog,
     followups,
     assessments,
+    interviews,
     reports,
     firstSeen,
   });
