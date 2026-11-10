@@ -10,7 +10,7 @@ import { parsePdfManifestRows } from "@/lib/apply/cv-selection.mjs";
 import { resolvePdfIndexPath } from "@/lib/core/pdf-index";
 import { getProfilePath } from "@/lib/core/profile-path.mjs";
 import { resolveTrackerPath } from "@/lib/core/tracker-files.mjs";
-import { buildApplicationTimeline } from "@/lib/application-timeline.mjs";
+import { buildApplicationTimeline, contactLinkIndex, resolveEmailApplication } from "@/lib/application-timeline.mjs";
 
 // Reads the files the timeline merges. Parsing is the core's wherever the core
 // has a parser (follow-ups, assessments): this module only finds the files and
@@ -115,10 +115,30 @@ async function readEmails(root: string) {
   const followups = followupsText === null ? [] : parseFollowups(followupsText);
   const byId = new Map<string, ReplyMatch>();
   for (const m of matchCandidates(candidates as ReplyCandidate[], apps, followups)) if (m.message_id) byId.set(m.message_id, m);
+  // Contacts the candidate linked to a row settle what the matcher left
+  // unpaired (contacts.mjs parseContacts; contact-extract.mjs parseFromHeader).
+  const contactsText = readOptional(path.join(root, "data", "contacts.tsv"));
+  let contactIndex = new Map<string, number>();
+  let senderEmail: (from: string) => string | null = () => null;
+  if (contactsText !== null) {
+    const [{ parseContacts }, { parseFromHeader }] = await Promise.all([
+      core<{ parseContacts: (s: string) => { contacts: { email?: string | null; tracker?: string | null }[] } }>("contacts"),
+      core<{ parseFromHeader: (f: string) => { email: string | null } }>("contact-extract"),
+    ]);
+    contactIndex = contactLinkIndex(parseContacts(contactsText).contacts);
+    senderEmail = (from) => parseFromHeader(from).email;
+  }
+  const knownNums = new Set(readApplications().map((a) => Number(a.n)).filter(Number.isInteger));
   return (candidates as ReplyCandidate[]).map((candidate) => {
     const m = candidate.message_id ? byId.get(candidate.message_id) : undefined;
     const paired = m && m.application_num !== null && m.confidence !== "low";
-    return { candidate, matchedNum: paired ? m!.application_num : null };
+    const matchedNum = resolveEmailApplication({
+      matchedNum: paired ? m!.application_num : null,
+      senderEmail: senderEmail(candidate.from ?? ""),
+      contactIndex,
+      knownNums,
+    });
+    return { candidate, matchedNum };
   });
 }
 

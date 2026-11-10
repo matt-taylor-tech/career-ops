@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildApplicationTimeline, eventDay, KIND_ORDER } from "../../src/lib/application-timeline.mjs";
+import { buildApplicationTimeline, eventDay, KIND_ORDER, contactLinkIndex, resolveEmailApplication } from "../../src/lib/application-timeline.mjs";
 
 const log = [
   { num: 7, date: "2026-10-28", from: "Evaluated", to: "Applied", source: "web", note: "" },
@@ -257,4 +257,29 @@ test("same-day order places documents after reports and emails before follow-ups
     emails: [{ candidate: mail({ date: "2026-10-06" }), matchedNum: 9 }],
   });
   assert.deepEqual(t.events.map((e) => e.kind), ["report", "document", "document", "email", "followup"]);
+});
+
+test("contactLinkIndex keys sender addresses by tracker link and drops conflicting links", () => {
+  const index = contactLinkIndex([
+    { email: "Adam@Example.com", tracker: "98" },
+    { email: "adam@example.com", tracker: "98" },
+    { email: "split@example.com", tracker: "50" },
+    { email: "split@example.com", tracker: "98" },
+    { email: "nolink@example.com", tracker: null },
+    { email: "", tracker: "12" },
+  ]);
+  assert.equal(index.get("adam@example.com"), 98);
+  assert.equal(index.has("split@example.com"), false);
+  assert.equal(index.has("nolink@example.com"), false);
+  assert.equal(index.size, 1);
+});
+
+test("resolveEmailApplication: the matcher wins, a contact link settles only unpaired emails on existing rows", () => {
+  const contactIndex = new Map([["adam@example.com", 98], ["gone@example.com", 999]]);
+  const knownNums = new Set([50, 98]);
+  assert.equal(resolveEmailApplication({ matchedNum: 50, senderEmail: "adam@example.com", contactIndex, knownNums }), 50);
+  assert.equal(resolveEmailApplication({ matchedNum: null, senderEmail: "ADAM@example.com", contactIndex, knownNums }), 98);
+  assert.equal(resolveEmailApplication({ matchedNum: null, senderEmail: "gone@example.com", contactIndex, knownNums }), null);
+  assert.equal(resolveEmailApplication({ matchedNum: null, senderEmail: null, contactIndex, knownNums }), null);
+  assert.equal(resolveEmailApplication({ matchedNum: null, senderEmail: "stranger@example.com", contactIndex, knownNums }), null);
 });

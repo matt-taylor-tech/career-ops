@@ -70,6 +70,42 @@ const SNIPPET_MAX = 220;
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * Sender address → tracker number, from data/contacts.tsv rows the candidate
+ * linked to an application (contacts.mjs parseContacts: {email, tracker}).
+ * An address linked to two different rows is dropped: the link must be
+ * unambiguous to be worth more than the matcher's tie.
+ * @param {Array<{email?: string|null, tracker?: string|null}>} contacts
+ * @returns {Map<string, number>}
+ */
+export function contactLinkIndex(contacts) {
+  const seen = new Map();
+  for (const c of contacts || []) {
+    const email = String(c?.email ?? "").trim().toLowerCase();
+    const num = Number.parseInt(String(c?.tracker ?? ""), 10);
+    if (!email || !Number.isInteger(num) || num <= 0) continue;
+    const prev = seen.get(email);
+    seen.set(email, prev === undefined || prev === num ? num : null);
+  }
+  const index = new Map();
+  for (const [email, num] of seen) if (num !== null) index.set(email, num);
+  return index;
+}
+
+/**
+ * Which application an email belongs to. The core matcher's pairing wins; a
+ * saved contact's tracker link only settles an email the matcher left
+ * unpaired (a tie between two rows of the same company, say), and only when
+ * that row exists.
+ * @param {{matchedNum: number|null, senderEmail: string|null, contactIndex: Map<string, number>, knownNums: Set<number>}} args
+ * @returns {number|null}
+ */
+export function resolveEmailApplication({ matchedNum, senderEmail, contactIndex, knownNums }) {
+  if (matchedNum !== null && matchedNum !== undefined) return matchedNum;
+  const linked = senderEmail ? contactIndex?.get(String(senderEmail).toLowerCase()) : undefined;
+  return linked !== undefined && knownNums?.has(linked) ? linked : null;
+}
+
 /** The calendar day an event happened on, or null when the cell is not one. */
 export function eventDay(raw) {
   const s = String(raw ?? "").trim();
