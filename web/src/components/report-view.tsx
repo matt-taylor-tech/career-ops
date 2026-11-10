@@ -31,6 +31,8 @@ import { KeywordCoverage } from "@/components/keyword-coverage";
 import { CompanyEvidence } from "@/components/company-evidence";
 import { companyPresentation } from "@/lib/company-presentation.mjs";
 import { PageFrame } from "@/components/page-frame";
+import { ApplicationTimeline } from "@/components/application-timeline";
+import type { ApplicationTimeline as Timeline } from "@/lib/application-timeline-server";
 
 // Progressive disclosure of the report. Current oferta.md writes letter F as
 // Interview Plan (STAR+R), not a verdict — never promote by letter (#3416).
@@ -59,6 +61,7 @@ export function ReportView({
   backHref = "/pipeline",
   applyHref,
   reportNum = null,
+  timeline = null,
 }: {
   id: string;
   app: Application | null;
@@ -78,6 +81,9 @@ export function ReportView({
   backHref?: string;
   applyHref?: string;
   reportNum?: number | null;
+  /** The row's merged history (status log, follow-ups, assessments, reports,
+   *  first scan). null for a report with no tracker row. */
+  timeline?: Timeline | null;
 }) {
   const meta = report ? parseReport(report) : null;
   const field = (label: string) => meta?.fields.find((f) => f.label === label)?.value;
@@ -170,6 +176,15 @@ export function ReportView({
           </div>
         )}
       </header>
+
+      {/* Right under the header: "where does this application stand, and how
+          did it get here" is the question a returning reader has before the
+          report's "should I apply". */}
+      {timeline && (
+        <div className="max-w-4xl">
+          <ApplicationTimeline timeline={timeline} />
+        </div>
+      )}
 
       {report ? (
         <>

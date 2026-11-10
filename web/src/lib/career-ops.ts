@@ -528,6 +528,16 @@ function reportNumber(n: string): number | null {
   return /^\d+$/.test(n) ? Number(n) : null;
 }
 
+/** Every report file for one report number, not only the one the tracker links:
+ *  a re-evaluation writes a new dated file beside the first. Same numeric match
+ *  and reserved-file filter as resolveReportFile. null when reports/ is absent;
+ *  other read errors throw (web/AGENTS.md: missing is not malformed). */
+export function reportFilesForNumber(target: number): string[] | null {
+  const files = listReportFiles(careerOpsRoot());
+  if (files === null) return null;
+  return files.filter((f) => f.endsWith(".md") && !isReservedReportFile(f) && parseInt(f, 10) === target).sort();
+}
+
 function listReportFiles(root: string): string[] | null {
   try {
     return fs.readdirSync(path.join(root, "reports"));

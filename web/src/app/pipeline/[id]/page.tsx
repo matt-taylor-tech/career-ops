@@ -8,6 +8,7 @@ import { pipelineQuery } from "@/lib/pipeline-navigation.mjs";
 import { reportNumberFor } from "@/lib/apply-checklist.mjs";
 import { tailoredCvOnDisk } from "@/lib/tailored-cv-ready.mjs";
 import { parseReport } from "@/lib/format";
+import { readApplicationTimeline } from "@/lib/application-timeline-server";
 
 // Same filter /api/cv-pdf applies, so a directory or a symlink out of output/
 // never marks a CV ready that the View link would refuse.
@@ -48,6 +49,16 @@ export default async function ReportPage({ params, searchParams }: {
     filenames: outputPdfNames(),
     company: companyName,
   });
+  const reportNum = reportNumberFor(id, app, report?.file ?? null);
+  // Only a tracker row has a history: a report with no row has no number the
+  // status and follow-up logs could name.
+  const timeline = app
+    ? await readApplicationTimeline({
+        appNum: Number.parseInt(app.n, 10),
+        reportNum,
+        postingUrl: app.url || parseReport(report?.content ?? "").fields.find((f) => f.label === "URL")?.value || null,
+      })
+    : null;
   return (
     <ReportView
       id={id}
@@ -60,7 +71,8 @@ export default async function ReportPage({ params, searchParams }: {
       coverReady={coverReady}
       backHref={`/pipeline${query ? `?${query}` : ""}`}
       applyHref={`/pipeline/${encodeURIComponent(id)}/apply${query ? `?${query}` : ""}`}
-      reportNum={reportNumberFor(id, app, report?.file ?? null)}
+      reportNum={reportNum}
+      timeline={timeline}
     />
   );
 }
