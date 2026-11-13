@@ -1,6 +1,8 @@
 import { fillSession, handoffSession, getSession } from "@/lib/apply/session";
 import { resolveSessionCv, uploadNameForCv } from "@/lib/apply/cv";
+import { handoffDecision } from "@/lib/apply/handoff-gate.mjs";
 import type { ApplyField } from "@/lib/apply/extract";
+import type { ApplyIssue } from "@/lib/apply/issue";
 import { readJsonObject } from "@/lib/json-body";
 import { careerOpsRoot } from "@/lib/career-ops";
 import { saveApplicationAnswers } from "@/lib/apply/save-answers.mjs";
@@ -32,6 +34,20 @@ export async function POST(req: Request) {
   try {
     const cvUploadName = cvPath ? uploadNameForCv({ application, title: session?.title }) : undefined;
     const result = await fillSession(sessionId, answers, fields, cvPath, cvUploadName);
+    const unmetLabels = (result.issues ?? []).flatMap((issue) =>
+      issue.code === "required-empty" && Array.isArray(issue.labels) ? issue.labels : [],
+    );
+    const decision = handoffDecision({
+      fields,
+      answers,
+      cvAttached: !!cvPath,
+      steps: result.steps,
+      unmetLabels,
+    });
+    const issues = [...(result.issues ?? [])];
+    for (const gap of decision.gaps) {
+      if (!issues.some((issue) => issue.message === gap.message)) issues.push(gap as ApplyIssue);
+    }
     // The reviewed answers replace the pre-fill draft in the job folder. A
     // failed save never fails the fill.
     let answersSaved: string | null = null;
@@ -41,8 +57,9 @@ export async function POST(req: Request) {
     } catch {
       /* best effort */
     }
-    if (handoff) await handoffSession(sessionId).catch(() => {});
-    return Response.json({ ...result, handedOff: !!handoff, cvAttached: !!cvPath, answersSaved });
+    const handedOff = !!handoff && decision.handoff;
+    if (handedOff) await handoffSession(sessionId).catch(() => {});
+    return Response.json({ ...result, issues, handedOff, cvAttached: !!cvPath, answersSaved });
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message.slice(0, 200) : "fill failed" }, { status: 500 });
   }

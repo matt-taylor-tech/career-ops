@@ -310,17 +310,38 @@ try {
     pass('greenhouse.fetch() preserves a valid epoch-0 first_published as postedAt 0');
   else fail(`greenhouse.fetch() epoch-0 postedAt = ${JSON.stringify(epochZero[0]?.postedAt)}`);
 
-  // Malformed response bodies → empty result, no crash.
-  const emptyCases = [null, {}, { jobs: null }, { jobs: 'nope' }];
-  let emptyOk = true;
-  for (const body of emptyCases) {
-    const out = await greenhouse.fetch(
-      { name: 'Acme', careers_url: 'https://job-boards.greenhouse.io/acme' },
-      { fetchJson: async () => body },
-    );
-    if (!Array.isArray(out) || out.length !== 0) { emptyOk = false; fail(`greenhouse.fetch() body=${JSON.stringify(body)} → ${JSON.stringify(out)}`); break; }
+  // Empty vs broken (#6906, ADDING_A_PROVIDER.md "Defensive parsing"): only the
+  // documented container, present and empty, is an empty board. Any other
+  // envelope throws, naming the keys (or the type) it got, so a changed API or
+  // an error served with a 200 cannot read as "no open roles".
+  const ghEntry = { name: 'Acme', careers_url: 'https://job-boards.greenhouse.io/acme' };
+  for (const method of ['fetch', 'fetchListing']) {
+    const emptyBoard = await greenhouse[method](ghEntry, { fetchJson: async () => ({ jobs: [] }) });
+    if (Array.isArray(emptyBoard) && emptyBoard.length === 0) pass(`greenhouse.${method}() returns [] for { jobs: [] }`);
+    else fail(`greenhouse.${method}() { jobs: [] } → ${JSON.stringify(emptyBoard)}`);
+
+    const brokenCases = [
+      [{}, '[]'],
+      [{ error: 'rate limited' }, '[error]'],
+      [{ jobs: null }, '[jobs]'],
+      [{ jobs: {} }, '[jobs]'],
+      ['oops', '[string]'],
+      [null, '[null]'],
+    ];
+    let brokenOk = true;
+    for (const [body, got] of brokenCases) {
+      let out;
+      let err = null;
+      try { out = await greenhouse[method](ghEntry, { fetchJson: async () => body }); } catch (e) { err = e; }
+      const msg = String(/** @type {any} */ (err)?.message || '');
+      if (!err || !msg.startsWith('greenhouse: unexpected response for Acme') || !msg.includes(`got: ${got}`)) {
+        brokenOk = false;
+        fail(`greenhouse.${method}() body=${JSON.stringify(body)} should throw naming ${got}; got ${err ? JSON.stringify(msg) : `a return of ${JSON.stringify(out)}`}`);
+        break;
+      }
+    }
+    if (brokenOk) pass(`greenhouse.${method}() throws, naming what it got, for a body that is not { jobs: [...] }`);
   }
-  if (emptyOk) pass('greenhouse.fetch() returns [] for null / {} / non-array jobs response bodies');
 
   // Guard chain runs BEFORE any request: an untrusted api: must throw without
   // ever calling fetchJson.
@@ -397,6 +418,22 @@ try {
       },
     },
   );
+
+  // /offices outgrows the shared 10 MB / 10 s defaults (Stripe's: 29.2 MB), so
+  // the call must carry its own larger ceiling, or every run aborts it.
+  let officesOpts = null;
+  await greenhouse.fetch(
+    { name: 'Stripe', careers_url: 'https://stripe.com/jobs/search', api: 'https://boards-api.greenhouse.io/v1/boards/stripe/jobs' },
+    {
+      fetchJson: async (url, opts) => {
+        if (url.endsWith('/offices')) { officesOpts = opts; return officesBody; }
+        return { jobs: [{ id: 201, title: 'Strategy & Operations', absolute_url: 'https://stripe.com/jobs/listing/x/201', location: { name: 'Hybrid' } }] };
+      },
+    },
+  );
+  if (officesOpts && officesOpts.maxBytes >= 32 * 1024 * 1024 && officesOpts.timeoutMs >= 30_000 && officesOpts.redirect === 'error')
+    pass('greenhouse.fetch() gives /offices its own body and time ceiling (Stripe /offices is 29 MB) and keeps redirect: error');
+  else fail(`greenhouse.fetch() /offices options = ${JSON.stringify(officesOpts)}`);
 
   if (requested.length === 2 && requested[1] === 'https://boards-api.greenhouse.io/v1/boards/cloudflare/offices')
     pass('greenhouse.fetch() requests /offices when the board reports work-model-only locations');

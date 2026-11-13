@@ -26,7 +26,7 @@
 
 <!-- The non-breaking spaces (&nbsp;) and word joiners (&#8288;) below decide where each line wraps on a phone. Keep them when editing. -->
 
-<p align="center"><a href="https://github.com/santifer"><img src="docs/avatar-santifer.png" width="48" height="48" align="middle" alt="Santiago Fernández de Valderrama Aparicio"></a>&nbsp;&nbsp;Stworzone przez <a href="https://github.com/santifer"><strong>@santifer</strong></a>, z udziałem&nbsp;&nbsp;<a href="https://github.com/career-ops-hq/career-ops/blob/main/README.pl.md#builders"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/builders-stack-dark.svg"><img src="docs/builders-stack-light.svg" alt="" height="32" align="middle"></picture></a>&nbsp;&nbsp;<a href="https://github.com/career-ops-hq/career-ops/blob/main/README.pl.md#builders">700+ kontrybutorów</a></p>
+<p align="center"><a href="https://github.com/santifer"><img src="docs/avatar-santifer.png" width="48" height="48" align="middle" alt="Santiago Fernández de Valderrama Aparicio"></a>&nbsp;&nbsp;Stworzone przez <a href="https://github.com/santifer"><strong>@santifer</strong></a>, z udziałem&nbsp;&nbsp;<a href="https://github.com/career-ops-hq/career-ops/blob/main/README.pl.md#builders"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/builders-stack-dark.svg"><img src="docs/builders-stack-light.svg" alt="" height="32" align="middle"></picture></a>&nbsp;&nbsp;<a href="https://github.com/career-ops-hq/career-ops/blob/main/README.pl.md#builders">800+ kontrybutorów</a></p>
 
 <p align="center">
 <strong>Miesiące wysyłania CV w&nbsp;ciszę.</strong><br>
@@ -629,6 +629,8 @@ Kod jest na licencji [MIT](LICENSE). Nazwa i marka
 „career-ops" podlegają [Polityce znaku towarowego](TRADEMARK.md): liberalnej
 dla użytku społeczności, zastrzeżonej dla nazewnictwa produktów komercyjnych
 i rekomendacji.
+
+Kod jest na licencji MIT; dane w [`employers/`](employers/) są na licencji [CC BY 4.0](employers/LICENSE).
 
 ## Historia gwiazdek
 

@@ -28,7 +28,7 @@
 
 <!-- The non-breaking spaces (&nbsp;) and word joiners (&#8288;) below decide where each line wraps on a phone. Keep them when editing. -->
 
-<p align="center"><a href="https://github.com/santifer"><img src="docs/avatar-santifer.png" width="48" height="48" align="middle" alt="Santiago Fernández de Valderrama Aparicio"></a>&nbsp;&nbsp;由 <a href="https://github.com/santifer"><strong>@santifer</strong></a> 建立，&nbsp;&nbsp;<a href="https://github.com/career-ops-hq/career-ops/blob/main/README.zh-TW.md#builders"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/builders-stack-dark.svg"><img src="docs/builders-stack-light.svg" alt="" height="32" align="middle"></picture></a>&nbsp;&nbsp;<a href="https://github.com/career-ops-hq/career-ops/blob/main/README.zh-TW.md#builders">700+ 位貢獻者</a>參與</p>
+<p align="center"><a href="https://github.com/santifer"><img src="docs/avatar-santifer.png" width="48" height="48" align="middle" alt="Santiago Fernández de Valderrama Aparicio"></a>&nbsp;&nbsp;由 <a href="https://github.com/santifer"><strong>@santifer</strong></a> 建立，&nbsp;&nbsp;<a href="https://github.com/career-ops-hq/career-ops/blob/main/README.zh-TW.md#builders"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/builders-stack-dark.svg"><img src="docs/builders-stack-light.svg" alt="" height="32" align="middle"></picture></a>&nbsp;&nbsp;<a href="https://github.com/career-ops-hq/career-ops/blob/main/README.zh-TW.md#builders">800+ 位貢獻者</a>參與</p>
 
 <p align="center">
 <strong>幾個月投出去的履歷，全都石&#8288;沉&#8288;大&#8288;海。</strong><br>
@@ -605,6 +605,8 @@ Wikidata：[Santiago Fernández de Valderrama Aparicio](https://www.wikidata.org
 程式碼以 [MIT](LICENSE) 授權發布。「career-ops」的名稱和
 品牌受[商標政策](TRADEMARK.md)約束：對社群使用寬鬆，
 對商業產品命名和背書保留權利。
+
+程式碼採用 MIT 授權；[`employers/`](employers/) 中的資料採用 [CC BY 4.0](employers/LICENSE) 授權。
 
 ## Star 歷史
 
