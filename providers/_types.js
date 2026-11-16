@@ -29,6 +29,12 @@
  *                               Never inferred from location text, title, or
  *                               `isRemote`. Omitted when unknown or unspecified.
  *                               Consumed by scan.mjs's opt-in `workplace_filter`.
+ * @property {string[]} [locations] Places as the source lists them, one per
+ *                               entry, before joining, without appended "Remote"
+ *                               or work models. Omitted when empty.
+ * @property {string} [country]  The source's country code when it exposes a
+ *                               dedicated field (Lever's `country`), trimmed but
+ *                               otherwise as given. Omitted when absent or null.
  * @property {string} [description] Job description text, populated ONLY when the
  *                               provider's list payload carries it for free (no
  *                               extra per-job request — the scanner is zero-token),
@@ -250,6 +256,7 @@
  * @property {(string|null)}         [body]
  * @property {('error'|'follow'|'manual')} [redirect]
  * @property {number}                [maxBytes] Response-body ceiling for fetchJson/fetchText; defaults to _http.mjs DEFAULT_MAX_BODY_BYTES. Over-cap throws `code: 'response_too_large'`.
+ * @property {(res: { status: number, headers: Headers }) => void} [onResponse] Called with the response (status and headers) before the body is read, including on a non-2xx just before it throws. themuse.mjs reads `cf-mitigated` this way.
  */
 
 /**

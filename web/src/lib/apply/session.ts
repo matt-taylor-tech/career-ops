@@ -157,11 +157,12 @@ async function enrichFromAts(url: string, fields: ApplyField[]): Promise<void> {
     if (hit.type) f.type = hit.type as ApplyField["type"];
     if (hit.options.length) f.options = hit.options;
     if (hit.required) f.required = true;
-    if (hit.type === "select") f.combobox = true;
+    // Do not mark a native select or a yes/no as a menu. A combobox keeps the
+    // flag the reader already set. Typing into a menu is only for that flag.
   }
 }
 
-type Session = { id: string; url: string; title: string; fields: ApplyField[]; context: BrowserContext; page: Page; frame: Frame; createdAt: number; formShot?: string };
+type Session = { id: string; url: string; title: string; fields: ApplyField[]; context: BrowserContext; page: Page; frame: Frame; createdAt: number; formShot?: string; written?: Map<string, string> };
 
 declare global {
   // eslint-disable-next-line no-var
@@ -505,6 +506,8 @@ export async function fillSession(
   fieldsMeta: ApplyField[],
   cvPath?: string,
   cvUploadName?: string,
+  /** Answers to compare at read-back. Defaults to the map this call typed. */
+  readbackAnswers?: Record<string, string>,
 ): Promise<{ steps: FillStep[]; navigated: boolean; issues: ApplyIssue[] }> {
   const s = SESSIONS.get(id);
   if (!s) throw new Error("apply session not found (it may have expired)");
@@ -640,7 +643,17 @@ export async function fillSession(
       } else {
         const liveType = ((await loc.getAttribute("type").catch(() => "")) || "").toLowerCase();
         if (liveType === "password") continue;
-        await loc.fill(value);
+        const current = (await loc.inputValue().catch(() => "")).trim();
+        // Remember only values this session wrote, without surrounding spaces.
+        // The live value is trimmed too, so a padded answer still matches on
+        // the next run and a dashboard correction can replace it. A different
+        // value already on the form was typed there, so a later run leaves it.
+        const answer = value.trim();
+        const remembered = s.written?.get(fid);
+        if (answer && (!current || current === remembered)) {
+          if (current !== answer) await loc.fill(answer);
+          (s.written ??= new Map()).set(fid, answer);
+        }
       }
       ok = !gaveUp;
     } catch {
@@ -657,7 +670,9 @@ export async function fillSession(
   })();
   // Read the real form back: did every answer actually land? any validation
   // error? — so we warn the user about silent divergence before the handoff.
-  const issues = await verifyFill(s.frame, fieldsMeta, answers).catch(() => [] as ApplyIssue[]);
+  const issues = await verifyFill(s.frame, fieldsMeta, readbackAnswers ?? answers).catch(() => [
+    { level: "warn" as const, code: "fill-unverified", message: "Couldn't read the form back, so it is not counted as pre-filled." },
+  ] as ApplyIssue[]);
   return { steps, navigated: endPath !== startPath, issues };
 }
 
