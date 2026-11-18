@@ -8,6 +8,7 @@ import { resolveSessionCv } from "@/lib/apply/cv";
 import { applyCvSource } from "@/lib/apply/cv-source.mjs";
 import { saveApplicationAnswers } from "@/lib/apply/save-answers.mjs";
 import { buildAnswerPrompt } from "@/lib/apply/answer-prompt.mjs";
+import { blankUnknownDraft, readApplyProfile } from "@/lib/apply/blank-unknown.mjs";
 import { runPlanner } from "@/lib/apply/planner";
 import { extractJsonObject } from "@/lib/extract-json-object.mjs";
 import { readJsonObject } from "@/lib/json-body";
@@ -133,17 +134,24 @@ export async function POST(req: Request) {
           result.buf.slice(-300),
         );
       }
-      const count = Object.keys(obj).length;
+      let profile;
+      try {
+        profile = readApplyProfile(careerOpsRoot());
+      } catch (error) {
+        return fail(error instanceof Error ? error.message.slice(0, 200) : "could not read the profile");
+      }
+      const answers = blankUnknownDraft(s.fields, obj, profile);
+      const count = Object.keys(answers).length;
       log(`Parsed ${count} answers${truncated ? " (RECOVERED from truncated output — some fields may be missing)" : ""}`);
       // Keep the draft on disk in the job folder; until now it lived only in
       // the tab and this server's memory (Matt's fork).
       try {
-        const saved = saveApplicationAnswers({ root: careerOpsRoot(), cvPath, title: s.title, url: s.url, stage: "prefill", fields: s.fields, answers: obj });
+        const saved = saveApplicationAnswers({ root: careerOpsRoot(), cvPath, title: s.title, url: s.url, stage: "prefill", fields: s.fields, answers });
         log("path" in saved ? `Saved answers: ${saved.path}` : `Answers not saved: ${saved.skipped}`);
       } catch (e) {
         log(`Answers not saved: ${e instanceof Error ? e.message : String(e)}`);
       }
-      emit({ t: "done", answers: obj, truncated, count });
+      emit({ t: "done", answers, truncated, count });
       controller.close();
     },
   });
