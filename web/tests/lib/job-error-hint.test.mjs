@@ -125,3 +125,8 @@ test("done job -> no hint", () => {
 test("error job with no steps -> no hint (defensive)", () => {
   assert.equal(jobErrorHint({ status: "error", text: "", steps: [] }), null);
 });
+
+test("fact-check failure quoting CV text about sign-in -> no auth hint", () => {
+  const label = "❌ PDF generation failed: Fact check failed for cv-web-228.html: drift=designed conditional access for mfa geofencing and risk-based sign-in";
+  assert.equal(jobErrorHint(errorJob(label)), null);
+});

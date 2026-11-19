@@ -46,6 +46,10 @@ export function jobErrorHint(job) {
   if (!label) return null;
   if (label === "Connection error") return HINTS.connection;
   if (label === "Interrupted (page reloaded)") return HINTS.interrupted;
+  // A PDF/fact-check failure quotes the candidate's own CV text, which can say
+  // "sign-in" or "credential" (Conditional Access, SSO). That is not a CLI
+  // sign-in problem, so the auth hint must not fire on it (Matt's fork).
+  if (/fact check failed|pdf generation failed/i.test(label)) return null;
   if (AUTH_PATTERN.test(label)) return HINTS.auth;
   return null;
 }
