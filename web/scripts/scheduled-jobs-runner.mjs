@@ -123,8 +123,9 @@ export function buildScanCommand(job) {
   const ats = Array.isArray(filters.ats) && filters.ats.length
     ? filters.ats.join(",")
     : "greenhouse,lever,ashby,workday";
-  // 2000 mirrors MAX_LIMIT_PER_ATS in src/lib/explore.ts.
-  const limit = numericFilter(filters.limitPerAts, 150, 50, 2000);
+  // 30000 mirrors MAX_LIMIT_PER_ATS in src/lib/explore.ts: enough for every
+  // board in the employer registry (27,806 across four ATS as of 2026-11-24).
+  const limit = numericFilter(filters.limitPerAts, 150, 50, 30000);
   return {
     script: "scan-ats-full.mjs",
     // --shuffle: a capped sweep otherwise re-scans the same alphabetical prefix

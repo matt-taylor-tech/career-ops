@@ -103,7 +103,7 @@ test("scan command honors the selected engine and bounded filters", () => {
   const filters = {
     sinceDays: 5,
     ats: ["lever", "ashby"],
-    limitPerAts: 9999,
+    limitPerAts: 99999,
   };
   assert.deepEqual(buildScanCommand({ engine: "portals", filters }), {
     script: "scan.mjs",
@@ -111,7 +111,7 @@ test("scan command honors the selected engine and bounded filters", () => {
   });
   assert.deepEqual(buildScanCommand({ engine: "full", filters }), {
     script: "scan-ats-full.mjs",
-    args: ["--since", "5", "--ats", "lever,ashby", "--limit", "2000", "--shuffle", "--json"],
+    args: ["--since", "5", "--ats", "lever,ashby", "--limit", "30000", "--shuffle", "--json"],
   });
 });
 

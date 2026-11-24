@@ -47,7 +47,7 @@ export const DEFAULT_FILTERS: ExploreFilters = {
 
 // Upper bound on companies sampled per source. Mirrored in
 // scripts/scheduled-jobs-runner.mjs (a plain script that cannot import this file).
-export const MAX_LIMIT_PER_ATS = 2000;
+export const MAX_LIMIT_PER_ATS = 30000;
 
 /** Banded title-vs-profile overlap (web/src/lib/title-fit.mjs). Words, not
  *  numbers, so it can't be mistaken for the evaluation's real 1–5 / A–F. */
