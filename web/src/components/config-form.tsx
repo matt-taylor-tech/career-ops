@@ -38,6 +38,7 @@ export function ConfigForm() {
   const [mode, setMode] = useState<Mode>("cli");
   const [clis, setClis] = useState<Cli[] | null>(null);
   const [cliId, setCliId] = useState<string>("");
+  const [writingCliId, setWritingCliId] = useState<string>("");
   const [provider, setProvider] = useState("anthropic");
   const [apiKey, setApiKey] = useState("");
   const [logos, setLogos] = useState(true);
@@ -53,6 +54,7 @@ export function ConfigForm() {
         // those dead panels; only the Installed-CLI path is functional.
         if (v.mode === "cli") setMode("cli");
         if (v.cliId) setCliId(v.cliId);
+        if (typeof v.writingCliId === "string") setWritingCliId(v.writingCliId);
         if (v.provider) setProvider(v.provider);
         if (typeof v.logos === "boolean") setLogos(v.logos);
       }
@@ -93,7 +95,8 @@ export function ConfigForm() {
     // The API key is deliberately NOT persisted: nothing reads it yet (the
     // key/manual panel is unwired) and a secret must never sit in clear-text
     // localStorage. Keys belong in the user's own CLI/provider config.
-    writeConfig(localStorage, window, { mode, cliId, provider, logos });
+    const writing = writingCliId && writingCliId !== cliId && keepIfInstalled(writingCliId, clis ?? []) ? writingCliId : "";
+    writeConfig(localStorage, window, { mode, cliId, writingCliId: writing, provider, logos });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -206,6 +209,27 @@ export function ConfigForm() {
                   <p className="rounded-xl border border-dashed border-border bg-surface/30 p-4 text-xs text-muted">
                     No supported CLI found on your PATH. Install one (e.g. Claude Code, Gemini CLI, OpenCode) to get started.
                   </p>
+                )}
+                {installed.length > 1 && (
+                  <div className="mt-4 rounded-xl border border-border bg-surface/50 px-4 py-3">
+                    <label htmlFor="writing-cli" className="block text-sm font-medium text-foreground">
+                      Resumes and cover letters
+                    </label>
+                    <p className="mt-0.5 mb-2 text-xs text-faint">
+                      Tailored CVs, cover letters and CV Studio rewrites run on this tool. Scoring and everything else use the tool selected above.
+                    </p>
+                    <select
+                      id="writing-cli"
+                      value={writingCliId && keepIfInstalled(writingCliId, installed) ? writingCliId : ""}
+                      onChange={(e) => setWritingCliId(e.target.value)}
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                    >
+                      <option value="">Same as above</option>
+                      {installed.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 )}
                 <p className="mt-2 text-[11px] leading-relaxed text-faint">
                   Best on <span className="text-muted">Claude Code</span> (live progress, the agentic apply + AI search,

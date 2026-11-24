@@ -13,6 +13,22 @@ export function readSavedCliId(): string | null {
   }
 }
 
+// Matt's fork: an optional second CLI for writing work (tailored CVs, cover
+// letters and CV Studio bullet rewrites), so a model with a more natural voice
+// can write while the main CLI keeps scoring and everything else. Empty means
+// "same as the main CLI".
+export const WRITING_KINDS: ReadonlySet<string> = new Set(["pdf", "cover"]);
+
+export function readSavedWritingCliId(): string | null {
+  try {
+    const raw = localStorage.getItem(CONFIG_KEY);
+    const id = raw ? JSON.parse(raw).writingCliId : "";
+    return typeof id === "string" && id ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 export function persistCliId(cliId: string) {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
@@ -87,4 +103,30 @@ export async function resolveCliId(
   if (fallback && readSavedCliId() === saved) persistCliId(fallback);
   if (saved) onStale?.(saved, fallback);
   return fallback;
+}
+
+/**
+ * The CLI for a run of `kind`: the saved writing CLI for WRITING_KINDS when one
+ * is set and still installed, otherwise resolveCliId(). A writing CLI that is no
+ * longer installed falls back to the main CLI and is reported through onStale.
+ */
+export async function resolveCliIdForKind(
+  kind: string,
+  onStale?: (stale: string, replacement: string | null) => void,
+): Promise<string | null> {
+  const writing = WRITING_KINDS.has(kind) ? readSavedWritingCliId() : null;
+  if (!writing) return resolveCliId(onStale);
+  let clis: unknown;
+  try {
+    const r = await fetch("/api/clis", { signal: AbortSignal.timeout(CLIS_TIMEOUT_MS) });
+    if (r.ok) clis = ((await r.json()) as { clis?: unknown }).clis;
+  } catch {
+    // can't check: trust the saved writing choice, as resolveCliId() does
+    return writing;
+  }
+  if (!Array.isArray(clis) || !clis.every(isCliEntry)) return writing;
+  if (keepIfInstalled(writing, clis)) return writing;
+  const main = await resolveCliId(onStale);
+  onStale?.(writing, main);
+  return main;
 }

@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { scoreTone } from "@/lib/format";
-import { resolveCliId } from "@/lib/saved-cli";
+import { resolveCliIdForKind } from "@/lib/saved-cli";
 import { createWorkerFeedback } from "@/lib/worker-feedback.mjs";
 import { readJobStream } from "@/lib/job-stream.mjs";
 import { createJobsPersister, restoreStoredJobs, saveJobsAfterOpen } from "@/lib/jobs-persist.mjs";
@@ -185,7 +185,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
           // A stale saved id is replaced silently otherwise — name the switch in
           // the job log so a transient "not installed" can't rewrite the user's
           // choice without a record.
-          const cliId = await resolveCliId((stale, replacement) => {
+          const cliId = await resolveCliIdForKind(opts.kind, (stale, replacement) => {
             const label = replacement
               ? `Saved CLI '${stale}' is not installed — using '${replacement}'`
               : `Saved CLI '${stale}' is not installed`;

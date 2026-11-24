@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Eye, EyeOff, Loader2, Pencil, Plus, Sparkles, TriangleAlert, Undo2 } from "lucide-react";
-import { readSavedCliId } from "@/lib/saved-cli";
+import { readSavedCliId, readSavedWritingCliId } from "@/lib/saved-cli";
 import { cn } from "@/lib/cn";
 import { arrange } from "@/lib/cv-studio/html-blocks.mjs";
 import { bulletShown, restoredId, wordDiff, type StudioAction, type StudioBullet, type StudioEdits, type StudioItem, type StudioSection } from "@/lib/cv-studio/studio.mjs";
@@ -241,7 +241,7 @@ function RewritePanel({ n, bullet, current, onUse }: { n: string; bullet: Studio
   const [proposal, setProposal] = useState<Proposal>({ kind: "idle" });
   const run = async (text: string) => {
     if (proposal.kind === "running") return;
-    const cliId = readSavedCliId();
+    const cliId = readSavedWritingCliId() ?? readSavedCliId();
     if (!cliId) return setProposal({ kind: "failed", error: "No AI CLI is set up. Choose one in Config, or edit the wording by hand." });
     setProposal({ kind: "running" });
     try {
