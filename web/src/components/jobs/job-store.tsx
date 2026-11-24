@@ -225,7 +225,17 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
               endedAt: Date.now(),
               steps: lastLabel ? [...j.steps, { kind: "status", label: lastLabel, ts: Date.now() }] : j.steps,
             }));
-            // persist a readable log file so the CLI/assistant can read past runs
+            // persist a readable log file so the CLI/assistant can read past runs.
+            // Matt's fork: failed runs are saved too, with the failing step, so a
+            // fact-check or page-budget failure can be read back after the fact.
+            if (status === "error") {
+              const failSteps = lastLabel ? [...steps, { kind: "status", label: lastLabel, ts: Date.now() }] : steps;
+              fetch("/api/runs/save", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id, title: opts.title, subtitle: opts.subtitle, page: opts.page, input: opts.input, status, steps: failSteps, output: text }),
+              }).catch(() => {});
+            }
             if (status === "done" || status === "gated") {
               fetch("/api/runs/save", {
                 method: "POST",

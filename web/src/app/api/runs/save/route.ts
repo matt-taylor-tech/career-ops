@@ -14,7 +14,7 @@ type Body = {
   subtitle?: string;
   page?: string;
   input?: string;
-  status?: "done" | "gated";
+  status?: "done" | "gated" | "error";
   gate?: { reason: string; message: string; confirmationRequired: boolean };
   result?: { score: number | null; summary: string };
   steps?: { kind: string; label: string }[];
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   if (!b) return NextResponse.json({ error: "bad json" }, { status: 400 });
   const safeId = String(b.id ?? "").replace(/[^a-z0-9_-]/gi, "");
   if (!safeId) return NextResponse.json({ error: "id required" }, { status: 400 });
-  if (b.status !== undefined && b.status !== "done" && b.status !== "gated") return NextResponse.json({ error: "invalid status" }, { status: 400 });
+  if (b.status !== undefined && b.status !== "done" && b.status !== "gated" && b.status !== "error") return NextResponse.json({ error: "invalid status" }, { status: 400 });
   const gate = b.status === "gated" ? b.gate : undefined;
   if (b.status === "gated" && (!gate || !EVALUATION_GATE_REASONS.some(reason => reason === gate.reason)
     || typeof gate.message !== "string" || !gate.message.trim() || gate.message.trim().length > 1200
