@@ -231,6 +231,17 @@ test("verdictReason reads the header lede above ---", () => {
   );
 });
 
+test("a report with no section break does not reuse its body as the verdict reason", () => {
+  const report = [
+    "# Fixture States Co — Engineer",
+    "",
+    "**URL:** https://jobs.fixture-states.example/engineer",
+    "",
+    "Fictional browser test report.",
+  ].join("\n");
+  assert.equal(verdictReason({ report, intro: "" }), "");
+});
+
 test("verdictReason drops inline Markdown markers", () => {
   assert.equal(
     verdictReason({
@@ -318,4 +329,9 @@ test("splitSections reads a CRLF report the same as an LF one", () => {
   const b = splitSections(crlf);
   assert.deepEqual(b.sections.map((s) => s.heading), ["A) Role Summary", "Verdict (lead)"]);
   assert.deepEqual(b.sections.map((s) => s.content), a.sections.map((s) => s.content));
+});
+
+test("a decimal-comma score is placed against the apply line as a decimal", () => {
+  assert.equal(applyLineLabel("3,8/5"), "Below the apply line");
+  assert.equal(applyLineLabel("4,2/5"), "Recommended");
 });
