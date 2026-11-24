@@ -1344,6 +1344,19 @@ function placeholdersOf(path) {
   return new Set((readFileSync(path, 'utf-8').match(PLACEHOLDER_RE) || []).map((t) => t.slice(2, -2)));
 }
 
+// Slots a user template leaves out on purpose, declared in an HTML comment such as
+// <!-- career-ops:omits SECTION_CERTIFICATIONS (combined into Education) -->.
+// Names are written without braces, so the declaration is not itself a slot.
+const OMITS_RE = /career-ops:omits\s+([A-Z_]+(?:\s*,\s*[A-Z_]+)*)/g;
+
+function declaredOmissions(path) {
+  const out = new Set();
+  for (const m of readFileSync(path, 'utf-8').matchAll(OMITS_RE)) {
+    for (const name of m[1].split(',')) out.add(name.trim());
+  }
+  return out;
+}
+
 // The slots the shipped templates of one kind all keep: those in the base template
 // that every shipped named variant also carries. A slot a shipped variant drops
 // (INTERESTS, say) is optional by the project's own example, so a user copy
@@ -1368,7 +1381,8 @@ function coreSlots(system) {
  *     section with no partial). The message is the resolver's own.
  *   - name: its file name is not in the normalized form the resolver looks for, so
  *     no name selects it.
- *   - drifted: it lacks a slot every shipped variant of its kind keeps.
+ *   - drifted: it lacks a slot every shipped variant of its kind keeps, unless the
+ *     template declares it with a `career-ops:omits SLOT` comment.
  * Never throws for a template problem and never blocks a render; callers decide
  * how loudly to report.
  */
@@ -1399,7 +1413,8 @@ export function auditUserTemplates({ dir = DEFAULT_TEMPLATES_DIR, userDir = DEFA
       }
       if (core) {
         const have = placeholdersOf(entry.path);
-        const missing = [...core].filter((slot) => !have.has(slot)).sort();
+        const omitted = declaredOmissions(entry.path);
+        const missing = [...core].filter((slot) => !have.has(slot) && !omitted.has(slot)).sort();
         if (missing.length) problems.push({ type: 'drifted', missing });
       }
       if (problems.length) findings.push({ kind, name: entry.name, path: entry.path, problems });

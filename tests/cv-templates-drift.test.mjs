@@ -57,6 +57,24 @@ test('a slot every shipped variant keeps, missing from a user template, is repor
   assert.deepEqual(finding.problems, [{ type: 'drifted', missing: ['SKILLS'] }]);
 });
 
+test('a slot the user template declares it omits is not drift', () => {
+  const l = layers();
+  writeFileSync(join(l.user, 'cv-template.merged.html'),
+    '<!-- career-ops:omits SKILLS (folded into Experience) -->{{NAME}}{{EXPERIENCE}}{{EDUCATION}}');
+
+  assert.deepEqual(audit(l), []);
+});
+
+test('declaring one omitted slot does not excuse another', () => {
+  const l = layers();
+  writeFileSync(join(l.user, 'cv-template.partial.html'),
+    '<!-- career-ops:omits INTERESTS -->{{NAME}}{{EXPERIENCE}}{{EDUCATION}}');
+
+  const [finding] = audit(l);
+
+  assert.deepEqual(finding.problems, [{ type: 'drifted', missing: ['SKILLS'] }]);
+});
+
 test('a slot the shipped variants themselves drop is not drift', () => {
   const l = layers();
   writeFileSync(join(l.user, 'cv-template.lean.html'), '{{NAME}}{{EXPERIENCE}}{{EDUCATION}}{{SKILLS}}');
