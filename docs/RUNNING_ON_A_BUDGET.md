@@ -342,9 +342,9 @@ When choosing a budget-friendly model, you need strong reasoning capabilities to
 > ```
 > As with other hosted providers, this sends your CV and job description to the configured endpoint.
 >
-> UberLLM (`https://api.uberllm.dev/v1`) is another OpenAI-compatible endpoint that works the same way, for example with `deepseek/deepseek-v4-flash`. It is prepaid pay-as-you-go, with no free tier:
+> MartLLM (`https://api.martllm.com/v1`) is another OpenAI-compatible endpoint that works the same way, for example with `deepseek/deepseek-v4-flash`. It is prepaid pay-as-you-go, with no free tier:
 > ```bash
-> OPENAI_BASE_URL=https://api.uberllm.dev/v1 \
+> OPENAI_BASE_URL=https://api.martllm.com/v1 \
 > OPENAI_MODEL=deepseek/deepseek-v4-flash \
 > OPENAI_API_KEY=your_uberllm_key \
 > node openai-eval.mjs --file ./jds/job.txt
@@ -368,6 +368,24 @@ When choosing a budget-friendly model, you need strong reasoning capabilities to
 > node openai-eval.mjs --file ./jds/job.txt
 > ```
 > As with other hosted providers, this sends your CV and job description to the configured endpoint. onomeo then forwards each request to the model's upstream provider, so your CV and job description also reach that provider.
+>
+> TrustedRouter (`https://api.trustedrouter.com/v1`) is another OpenAI-compatible endpoint that works the same way, for example with `deepseek/deepseek-v4-flash`. Model ids are vendor-prefixed and listed at `https://api.trustedrouter.com/v1/models`:
+> ```bash
+> OPENAI_BASE_URL=https://api.trustedrouter.com/v1 \
+> OPENAI_MODEL=deepseek/deepseek-v4-flash \
+> OPENAI_API_KEY=your_trustedrouter_key \
+> node openai-eval.mjs --file ./jds/job.txt
+> ```
+> As with other hosted providers, this sends your CV and job description to the configured endpoint. TrustedRouter then forwards each request to the model's upstream provider, so your CV and job description also reach that provider.
+>
+> Straitly (`https://api.straitly.ai/v1`) is another OpenAI-compatible endpoint that works the same way, for example with `deepseek/deepseek-v4-1-flash-1017` or `claude-sonnet-5-5`. Model ids for 100+ models are listed at `https://straitly.ai/models` (and `https://api.straitly.ai/v1/models`):
+> ```bash
+> OPENAI_BASE_URL=https://api.straitly.ai/v1 \
+> OPENAI_MODEL=deepseek/deepseek-v4-1-flash-1017 \
+> OPENAI_API_KEY=your_straitly_key \
+> node openai-eval.mjs --file ./jds/job.txt
+> ```
+> As with other hosted providers, this sends your CV and job description to the configured endpoint. Straitly then forwards each request to the model's upstream provider, so your CV and job description also reach that provider.
 >
 > Run `node openai-eval.mjs --help` for per-provider examples. For 100% local/private use, point `--url` at a local server (LM Studio / llama.cpp / vLLM) or use `node ollama-eval.mjs`.
 
